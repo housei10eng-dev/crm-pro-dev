@@ -1,0 +1,203 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RoleName {
+  MASTER_ADMIN
+  FINANCEIRO
+  SUPORTE
+  ANALYTICS
+}
+
+enum CompanyType {
+  PF
+  PJ
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum PaymentMethod {
+  CARD
+  PIX
+  BOLETO
+  TRANSFER
+  OTHER
+}
+
+enum PaymentStatus {
+  PAID
+  OPEN
+  FAILED
+  CANCELED
+  REFUNDED
+  CHARGEBACK
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users     User[]
+  companies Company[]
+  auditLogs AuditLog[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  email        String   @unique
+  name         String
+  passwordHash String
+  status       String   @default("ACTIVE")
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  roles  UserRole[]
+  audit  AuditLog[] @relation("actor")
+  criticalSessions CriticalEditSession[]
+}
+
+model UserRole {
+  userId String
+  role   RoleName
+  tenantId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, role])
+  @@index([tenantId, role])
+}
+
+model Company {
+  id              String        @id @default(uuid())
+  tenantId        String
+  name            String
+  cpfCnpj         String
+  type            CompanyType
+  plan            String
+  status          CompanyStatus @default(ACTIVE)
+  currentRevenue  Int           @default(0) // cents
+  paymentMethod   PaymentMethod @default(CARD)
+  paymentStatus   PaymentStatus @default(OPEN)
+  cycle           String        @default("MONTHLY")
+  segment         String?
+  acquiredAt      DateTime?
+  email           String?
+  phone           String?
+  internalNotes   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices BillingInvoice[]
+  tickets  SupportTicket[]
+}
+
+model BillingInvoice {
+  id         String        @id @default(uuid())
+  tenantId   String
+  companyId  String
+  amount     Int           // cents
+  currency   String        @default("BRL")
+  cycle      String
+  status     PaymentStatus @default(OPEN)
+  dueDate    DateTime
+  paidAt     DateTime?
+  gatewayId  String?
+  createdAt  DateTime      @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  payments BillingPayment[]
+
+  @@index([tenantId, companyId, dueDate])
+}
+
+model BillingPayment {
+  id         String        @id @default(uuid())
+  tenantId   String
+  invoiceId  String
+  amount     Int
+  method     PaymentMethod
+  status     PaymentStatus
+  gatewayChargeId String?
+  attemptedAt DateTime @default(now())
+
+  invoice BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, invoiceId])
+}
+
+model BillingEvent {
+  id        String   @id @default(uuid())
+  tenantId  String
+  eventId   String   @unique
+  type      String
+  payload   Json
+  receivedAt DateTime @default(now())
+
+  @@index([tenantId, receivedAt])
+}
+
+model SupportTicket {
+  id        String   @id @default(uuid())
+  tenantId  String
+  companyId String
+  subject   String
+  status    String   @default("OPEN")
+  slaDueAt  DateTime?
+  lastInteractionAt DateTime?
+  createdAt DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, companyId, createdAt])
+}
+
+model CriticalEditSession {
+  id        String   @id @default(uuid())
+  tenantId  String
+  companyId String
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, companyId, expiresAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  tenantId   String
+  entityType String
+  entityId   String
+  field      String
+  oldValue   Json?
+  newValue   Json?
+  action     String
+  actorId    String?
+  actorRole  String?
+  origin     String   @default("system")
+  requestId  String?
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User?  @relation("actor", fields: [actorId], references: [id])
+
+  @@index([tenantId, entityType, entityId, createdAt])
+}
