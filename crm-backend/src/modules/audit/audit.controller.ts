@@ -3,17 +3,18 @@ import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { AuthGuard } from "@nestjs/passport";
 import { PrismaService } from "../../prisma/prisma.service";
 import { RolesGuard } from "../../common/guards/roles.guard";
+import { MasterOnlyGuard } from "../../common/guards/master-only.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RoleName } from "@prisma/client";
 
-@ApiTags("audit")
+@ApiTags("admin/audit")
 @ApiBearerAuth()
-@UseGuards(AuthGuard("jwt"), RolesGuard)
-@Controller("audit")
+@UseGuards(AuthGuard("jwt"), RolesGuard, MasterOnlyGuard)
+@Controller("admin/audit")
 export class AuditController {
   constructor(private prisma: PrismaService) {}
 
-  @Roles(RoleName.MASTER_ADMIN, RoleName.FINANCEIRO, RoleName.SUPORTE, RoleName.ANALYTICS)
+  @Roles(RoleName.MASTER_ADMIN, RoleName.MASTER_FINANCE, RoleName.MASTER_SUPPORT, RoleName.MASTER_ANALYTICS)
   @Get()
   async list(@Request() req: any, @Query("entity_type") entityType?: string, @Query("entity_id") entityId?: string, @Query("from") from?: string, @Query("to") to?: string) {
     const tenantId = req.user.tenantId;

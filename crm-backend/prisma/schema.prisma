@@ -9,9 +9,11 @@ datasource db {
 
 enum RoleName {
   MASTER_ADMIN
-  FINANCEIRO
-  SUPORTE
-  ANALYTICS
+  MASTER_SUPPORT
+  MASTER_FINANCE
+  MASTER_ANALYTICS
+  TENANT_ADMIN
+  TENANT_USER
 }
 
 enum CompanyType {

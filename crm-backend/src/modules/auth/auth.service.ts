@@ -32,6 +32,11 @@ export class AuthService {
       include: { roles: true, tenant: true },
     });
     if (!dbUser) throw new UnauthorizedException();
+
+    const MASTER_TENANT_ID = process.env.MASTER_TENANT_ID || "00000000-0000-0000-0000-000000000001";
+    const hasMasterRole = dbUser.roles.some((r) => String(r.role).startsWith("MASTER_"));
+    const scope = hasMasterRole && dbUser.tenantId === MASTER_TENANT_ID ? "admin" : "tenant";
+
     return {
       id: dbUser.id,
       email: dbUser.email,
@@ -39,6 +44,7 @@ export class AuthService {
       tenantId: dbUser.tenantId,
       tenantName: dbUser.tenant.name,
       roles: dbUser.roles.map((r) => r.role),
+      scope,
     };
   }
 }

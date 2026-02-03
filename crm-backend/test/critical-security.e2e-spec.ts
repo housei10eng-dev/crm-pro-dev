@@ -202,7 +202,7 @@ describe('Critical Security E2E Tests', () => {
   describe('Critical Field Protection', () => {
     it('should allow editing company details', async () => {
       const res = await request(app.getHttpServer())
-        .patch(`/companies/${testCompanyId}`)
+        .patch(`/admin/companies/${testCompanyId}`)
         .set('Authorization', `Bearer ${accessToken}`)
         .set('X-Tenant-ID', testTenantId)
         .send({ internalNotes: 'Test update' });
@@ -212,7 +212,7 @@ describe('Critical Security E2E Tests', () => {
 
     it('should allow unlock with password re-auth', async () => {
       const res = await request(app.getHttpServer())
-        .post(`/companies/${testCompanyId}/unlock-critical`)
+        .post(`/admin/companies/${testCompanyId}/unlock-critical`)
         .set('Authorization', `Bearer ${accessToken}`)
         .set('X-Tenant-ID', testTenantId)
         .send({ password: 'Admin123!' });
@@ -225,7 +225,7 @@ describe('Critical Security E2E Tests', () => {
   describe('Request Logging', () => {
     it('should process authenticated requests', async () => {
       const res = await request(app.getHttpServer())
-        .get('/companies')
+        .get('/admin/companies')
         .set('Authorization', `Bearer ${accessToken}`)
         .set('X-Tenant-ID', testTenantId);
 

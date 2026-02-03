@@ -7,13 +7,14 @@ import { CreateCompanyDto } from "./dto/create-company.dto";
 import { UpdateCompanyDto } from "./dto/update-company.dto";
 import { UnlockCriticalDto } from "./dto/unlock-critical.dto";
 import { RolesGuard } from "../../common/guards/roles.guard";
+import { MasterOnlyGuard } from "../../common/guards/master-only.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { RoleName } from "@prisma/client";
 
-@ApiTags("companies")
+@ApiTags("admin/companies")
 @ApiBearerAuth()
-@UseGuards(AuthGuard("jwt"), RolesGuard)
-@Controller("companies")
+@UseGuards(AuthGuard("jwt"), RolesGuard, MasterOnlyGuard)
+@Controller("admin/companies")
 export class CompaniesController {
   constructor(private svc: CompaniesService) {}
 
@@ -29,7 +30,7 @@ export class CompaniesController {
     return this.svc.list(req.user, { limit: limit ? parseInt(limit, 10) : 20, cursor, status, segment, order });
   }
 
-  @Roles(RoleName.MASTER_ADMIN, RoleName.SUPORTE, RoleName.FINANCEIRO)
+  @Roles(RoleName.MASTER_ADMIN, RoleName.MASTER_SUPPORT, RoleName.MASTER_FINANCE)
   @Post()
   async create(@Request() req: any, @Body() dto: CreateCompanyDto) {
     return this.svc.create(req.user, dto, req);
@@ -40,7 +41,7 @@ export class CompaniesController {
     return this.svc.detail(req.user, id);
   }
 
-  @Roles(RoleName.MASTER_ADMIN, RoleName.SUPORTE)
+  @Roles(RoleName.MASTER_ADMIN, RoleName.MASTER_SUPPORT)
   @Patch(":id")
   async update(@Request() req: any, @Param("id") id: string, @Body() dto: UpdateCompanyDto) {
     return this.svc.update(req.user, id, dto, req);

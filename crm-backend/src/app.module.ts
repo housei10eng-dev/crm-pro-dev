@@ -7,6 +7,7 @@ import { CompaniesModule } from "./modules/companies/companies.module";
 import { EmployeesModule } from "./modules/employees/employees.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { BillingModule } from "./modules/billing/billing.module";
+import { TenantAppModule } from "./modules/app/app.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -24,6 +25,7 @@ import { HealthController } from "./health.controller";
     EmployeesModule,
     AuditModule,
     BillingModule,
+    TenantAppModule,
   ],
   controllers: [HealthController],
 })

@@ -3,29 +3,33 @@ import * as bcrypt from "bcrypt";
 
 const prisma = new PrismaClient();
 
+const MASTER_TENANT_ID = process.env.MASTER_TENANT_ID || "00000000-0000-0000-0000-000000000001";
+const MASTER_EMAIL = process.env.MASTER_EMAIL || "master@demo.com";
+const MASTER_PASSWORD = process.env.MASTER_PASSWORD || "Admin123!";
+
 async function main() {
-  // Create tenant
-  const tenant = await prisma.tenant.upsert({
-    where: { id: "00000000-0000-0000-0000-000000000001" },
+  // Create master tenant
+  const masterTenant = await prisma.tenant.upsert({
+    where: { id: MASTER_TENANT_ID },
     update: {},
     create: {
-      id: "00000000-0000-0000-0000-000000000001",
-      name: "Demo Tenant"
+      id: MASTER_TENANT_ID,
+      name: "Master Tenant"
     }
   });
 
-  const passwordHash = await bcrypt.hash("Admin123!", 10);
+  const passwordHash = await bcrypt.hash(MASTER_PASSWORD, 10);
 
   const master = await prisma.user.upsert({
-    where: { email: "master@demo.com" },
+    where: { email: MASTER_EMAIL },
     update: {},
     create: {
-      tenantId: tenant.id,
-      email: "master@demo.com",
+      tenantId: masterTenant.id,
+      email: MASTER_EMAIL,
       name: "Master Admin",
       passwordHash,
       roles: {
-        create: [{ tenantId: tenant.id, role: RoleName.MASTER_ADMIN }]
+        create: [{ tenantId: masterTenant.id, role: RoleName.MASTER_ADMIN }]
       }
     }
   });
@@ -34,11 +38,11 @@ async function main() {
     where: { email: "support@demo.com" },
     update: {},
     create: {
-      tenantId: tenant.id,
+      tenantId: masterTenant.id,
       email: "support@demo.com",
       name: "Support User",
       passwordHash: await bcrypt.hash("Support123!", 10),
-      roles: { create: [{ tenantId: tenant.id, role: RoleName.SUPORTE }] }
+      roles: { create: [{ tenantId: masterTenant.id, role: RoleName.MASTER_SUPPORT }] }
     }
   });
 
@@ -46,15 +50,50 @@ async function main() {
     where: { email: "finance@demo.com" },
     update: {},
     create: {
-      tenantId: tenant.id,
+      tenantId: masterTenant.id,
       email: "finance@demo.com",
       name: "Finance User",
       passwordHash: await bcrypt.hash("Finance123!", 10),
-      roles: { create: [{ tenantId: tenant.id, role: RoleName.FINANCEIRO }] }
+      roles: { create: [{ tenantId: masterTenant.id, role: RoleName.MASTER_FINANCE }] }
     }
   });
 
-  // Companies
+  // Create a demo tenant (not master)
+  const demoTenant = await prisma.tenant.upsert({
+    where: { id: "00000000-0000-0000-0000-000000000002" },
+    update: {},
+    create: {
+      id: "00000000-0000-0000-0000-000000000002",
+      name: "Demo Tenant"
+    }
+  });
+
+  // Create tenant users
+  const tenantAdmin = await prisma.user.upsert({
+    where: { email: "admin@tenant.com" },
+    update: {},
+    create: {
+      tenantId: demoTenant.id,
+      email: "admin@tenant.com",
+      name: "Tenant Admin",
+      passwordHash: await bcrypt.hash("Tenant123!", 10),
+      roles: { create: [{ tenantId: demoTenant.id, role: RoleName.TENANT_ADMIN }] }
+    }
+  });
+
+  const tenantUser = await prisma.user.upsert({
+    where: { email: "user@tenant.com" },
+    update: {},
+    create: {
+      tenantId: demoTenant.id,
+      email: "user@tenant.com",
+      name: "Tenant User",
+      passwordHash: await bcrypt.hash("Tenant123!", 10),
+      roles: { create: [{ tenantId: demoTenant.id, role: RoleName.TENANT_USER }] }
+    }
+  });
+
+  // Companies (for master tenant)
   const segments = ["SaaS", "Ecommerce", "Agency", "Healthcare"];
   const statuses = [CompanyStatus.ACTIVE, CompanyStatus.INACTIVE, CompanyStatus.SUSPENDED];
 
@@ -62,7 +101,7 @@ async function main() {
   for (let i = 1; i <= 10; i++) {
     const company = await prisma.company.create({
       data: {
-        tenantId: tenant.id,
+        tenantId: masterTenant.id,
         name: `Empresa ${i}`,
         cpfCnpj: i % 2 === 0 ? `1234567800010${i}` : `1234567890${i}`.slice(0,11),
         type: i % 2 === 0 ? CompanyType.PJ : CompanyType.PF,
@@ -82,7 +121,7 @@ async function main() {
 
     await prisma.auditLog.create({
       data: {
-        tenantId: tenant.id,
+        tenantId: masterTenant.id,
         entityType: "company",
         entityId: company.id,
         field: "*",
@@ -106,7 +145,7 @@ async function main() {
     const status = m === 4 ? PaymentStatus.FAILED : PaymentStatus.PAID;
     const invoice = await prisma.billingInvoice.create({
       data: {
-        tenantId: tenant.id,
+        tenantId: masterTenant.id,
         companyId: target.id,
         amount: 8000,
         cycle: "MONTHLY",
@@ -119,7 +158,7 @@ async function main() {
 
     await prisma.billingPayment.create({
       data: {
-        tenantId: tenant.id,
+        tenantId: masterTenant.id,
         invoiceId: invoice.id,
         amount: 8000,
         method: PaymentMethod.CARD,
@@ -130,7 +169,7 @@ async function main() {
 
     await prisma.auditLog.create({
       data: {
-        tenantId: tenant.id,
+        tenantId: masterTenant.id,
         entityType: "billing_invoice",
         entityId: invoice.id,
         field: "status",
@@ -147,7 +186,7 @@ async function main() {
   // Support ticket
   await prisma.supportTicket.create({
     data: {
-      tenantId: tenant.id,
+      tenantId: masterTenant.id,
       companyId: target.id,
       subject: "Problema com pagamento",
       status: "OPEN",
@@ -156,7 +195,15 @@ async function main() {
     }
   });
 
-  console.log("Seed complete:", { tenant: tenant.id, master: master.email, support: sup.email, finance: fin.email });
+  console.log("Seed complete:", { 
+    masterTenant: masterTenant.id, 
+    demoTenant: demoTenant.id,
+    master: master.email, 
+    support: sup.email, 
+    finance: fin.email,
+    tenantAdmin: tenantAdmin.email,
+    tenantUser: tenantUser.email
+  });
 }
 
 main()
