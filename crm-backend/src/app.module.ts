@@ -7,6 +7,7 @@ import { CompaniesModule } from "./modules/companies/companies.module";
 import { EmployeesModule } from "./modules/employees/employees.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { BillingModule } from "./modules/billing/billing.module";
+import { HealthController } from "./health.controller";
 
 @Module({
   imports: [
@@ -24,5 +25,6 @@ import { BillingModule } from "./modules/billing/billing.module";
     AuditModule,
     BillingModule,
   ],
+  controllers: [HealthController],
 })
 export class AppModule {}

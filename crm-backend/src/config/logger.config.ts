@@ -8,6 +8,17 @@ export const pinoLogger = pino(
   {
     level: process.env.LOG_LEVEL || (isDev ? 'debug' : 'info'),
     timestamp: pino.stdTimeFunctions.isoTime,
+    redact: {
+      paths: [
+        'req.headers.authorization',
+        'req.headers.cookie',
+        'password',
+        'accessToken',
+        'token',
+        'cpfCnpj',
+      ],
+      remove: true,
+    },
     formatters: {
       level: (label: string) => {
         return { level: label.toUpperCase() };

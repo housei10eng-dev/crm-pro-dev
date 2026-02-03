@@ -31,6 +31,12 @@ describe("E2E", () => {
     await request(app.getHttpServer()).get("/companies").expect(401);
   });
 
+  it("health endpoint responds", async () => {
+    const res = await request(app.getHttpServer()).get("/health");
+    expect([200, 503]).toContain(res.status);
+    expect(res.body.status).toBeTruthy();
+  });
+
   it("critical field blocked without unlock", async () => {
     const login = await request(app.getHttpServer())
       .post("/auth/login")

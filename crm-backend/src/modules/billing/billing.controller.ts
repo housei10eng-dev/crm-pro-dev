@@ -1,7 +1,9 @@
-import { Body, Controller, Post, Headers, UseGuards } from "@nestjs/common";
+import { Body, Controller, Post, Headers, UseGuards, Request, UnauthorizedException } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
 import { PrismaService } from "../../prisma/prisma.service";
 import { WebhookSignatureGuard } from "../../common/guards/webhook-signature.guard";
+import { createHash } from "crypto";
+import { Throttle } from "@nestjs/throttler";
 
 /**
  * Webhook receiver with HMAC-SHA256 signature verification
@@ -14,12 +16,14 @@ export class BillingController {
   constructor(private prisma: PrismaService) {}
 
   @UseGuards(WebhookSignatureGuard)
+  @Throttle({ default: { limit: 300, ttl: 60000 } })
   @Post("webhook")
   async webhook(
     @Body() body: any,
     @Headers("x-event-id") eventId?: string,
     @Headers("x-tenant-id") tenantId?: string,
     @Headers("x-webhook-timestamp") timestamp?: string,
+    @Request() req?: any,
   ) {
     if (!eventId || !tenantId) {
       console.warn({ eventId, tenantId }, "Webhook rejected: missing eventId or tenantId");
@@ -32,8 +36,29 @@ export class BillingController {
       return { ok: true, deduped: true };
     }
 
+    const rawBody = req?.rawBody && Buffer.isBuffer(req.rawBody) ? req.rawBody.toString("utf8") : null;
+    if (!rawBody) {
+      console.warn({ eventId, tenantId }, "Webhook rejected: missing rawBody in controller");
+      throw new UnauthorizedException("Missing webhook raw body");
+    }
+
+    const signedPayload = `${timestamp}.${rawBody}`;
+    const signatureHash = createHash("sha256").update(signedPayload).digest("hex");
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const replay = await this.prisma.billingEvent.findFirst({
+      where: {
+        tenantId,
+        signatureHash,
+        receivedAt: { gte: fiveMinutesAgo },
+      },
+    });
+    if (replay) {
+      console.warn({ eventId, tenantId }, "Webhook replay detected (signature hash)");
+      return { ok: true, deduped: true };
+    }
+
     await this.prisma.billingEvent.create({
-      data: { tenantId, eventId, type: String(body?.type ?? "unknown"), payload: body },
+      data: { tenantId, eventId, type: String(body?.type ?? "unknown"), payload: body, signatureHash },
     });
 
     console.info({ eventId, tenantId, type: body?.type, timestamp }, "Webhook processed");

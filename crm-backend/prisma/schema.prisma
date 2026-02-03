@@ -145,9 +145,11 @@ model BillingEvent {
   eventId   String   @unique
   type      String
   payload   Json
+  signatureHash String?
   receivedAt DateTime @default(now())
 
   @@index([tenantId, receivedAt])
+  @@index([tenantId, signatureHash, receivedAt])
 }
 
 model SupportTicket {
