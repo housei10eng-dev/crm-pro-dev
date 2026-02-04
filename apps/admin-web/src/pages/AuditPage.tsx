@@ -1,10 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { ColumnDef, SortingState, ColumnFiltersState } from '@tanstack/react-table';
 import { useAudit } from '../hooks/useAudit';
 import { AdvancedTable } from '../components/table/AdvancedTable';
 import { ColumnManager } from '../components/table/ColumnManager';
 import { format } from 'date-fns';
 import { TableConfig } from '../hooks/useTableConfig';
+import { useCreateView, useUpdateView, useViews } from '../hooks/useViews';
 
 interface AuditLog {
   id: string;
@@ -16,6 +17,13 @@ interface AuditLog {
   newValue: string | null;
   actorRole: string;
   createdAt: string;
+}
+
+interface TableView {
+  id: string;
+  config?: Partial<TableConfig>;
+  isDefault?: boolean;
+  createdAt?: string;
 }
 
 function safeFormatDate(value: string | null | undefined) {
@@ -44,11 +52,18 @@ function safeRenderValue(value: unknown) {
 
 export default function AuditPage() {
   const { data: auditData, isLoading } = useAudit();
+  const { data: viewsData } = useViews('audit');
+  const updateView = useUpdateView();
+  const createView = useCreateView();
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const hasAppliedViewRef = useRef(false);
+  const applyingViewRef = useRef(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const columns: ColumnDef<AuditLog>[] = useMemo(
     () => [
@@ -136,14 +151,7 @@ export default function AuditPage() {
     []
   );
 
-  // Column visibility management
-  const visibleColumns = useMemo(
-    () => columns.filter((col) => {
-      const colId = (col as { accessorKey?: string }).accessorKey;
-      return !hiddenColumns.includes(colId as string);
-    }),
-    [columns, hiddenColumns]
-  );
+  const nonHideableColumnIds = useMemo(() => ['createdAt'], []);
 
   const columnList = useMemo(
     () =>
@@ -159,33 +167,99 @@ export default function AuditPage() {
     [columns, hiddenColumns]
   );
 
+  const buildConfig = useCallback(
+    (columnsOrder?: string[]): TableConfig => ({
+      columnsOrder:
+        columnsOrder ||
+        columns.map((col) => {
+          const colId = (col as { accessorKey?: string }).accessorKey;
+          return colId as string;
+        }),
+      hiddenColumns,
+      filters: columnFilters,
+      sorting,
+      globalSearch: globalFilter,
+    }),
+    [columns, hiddenColumns, columnFilters, sorting, globalFilter]
+  );
+
+  const applyConfig = useCallback((config: Partial<TableConfig>) => {
+    applyingViewRef.current = true;
+    if (config.hiddenColumns) setHiddenColumns(config.hiddenColumns);
+    if (config.sorting) {
+      setSorting(Array.isArray(config.sorting) ? config.sorting : []);
+    }
+    if (config.filters) {
+      setColumnFilters(Array.isArray(config.filters) ? config.filters : []);
+    }
+    if (config.globalSearch !== undefined) setGlobalFilter(config.globalSearch);
+    setTimeout(() => {
+      applyingViewRef.current = false;
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    const views = Array.isArray(viewsData) ? (viewsData as TableView[]) : [];
+    if (views.length === 0) return;
+    const active = views.find((view) => view.isDefault) || views[views.length - 1];
+    setActiveViewId(active.id);
+    if (!hasAppliedViewRef.current && active.config) {
+      applyConfig(active.config);
+      hasAppliedViewRef.current = true;
+    }
+  }, [viewsData, applyConfig]);
+
+  useEffect(() => {
+    const views = Array.isArray(viewsData) ? (viewsData as TableView[]) : [];
+    if (views.length > 0 || createView.isPending) return;
+    createView.mutate(
+      {
+        entityType: 'audit',
+        name: 'Default',
+        config: buildConfig(),
+        isDefault: true,
+      },
+      {
+        onSuccess: (response) => {
+          const created =
+            (response as { data?: TableView }).data ||
+            (response as unknown as TableView);
+          if (created?.id) setActiveViewId(created.id);
+        },
+      }
+    );
+  }, [viewsData, buildConfig, createView]);
+
+  const persistConfig = useCallback(
+    (override?: Partial<TableConfig>) => {
+      if (!activeViewId || applyingViewRef.current) return;
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        updateView.mutate({
+          id: activeViewId,
+          data: { config: { ...buildConfig(), ...override } },
+        });
+      }, 500);
+    },
+    [activeViewId, updateView, buildConfig]
+  );
+
+  useEffect(() => {
+    persistConfig();
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [hiddenColumns, persistConfig]);
+
   const toggleColumn = (columnId: string) => {
+    if (nonHideableColumnIds.includes(columnId)) return;
     setHiddenColumns((prev) =>
       prev.includes(columnId) ? prev.filter((id) => id !== columnId) : [...prev, columnId]
     );
   };
 
   const handleColumnOrderChange = (newOrder: string[]) => {
-    // TODO: Persist to backend via Views API
-    // await viewsApi.updateColumnOrder('audit', newOrder);
-  };
-
-  const handleLoadView = (config: Partial<TableConfig>) => {
-    if (config.hiddenColumns) setHiddenColumns(config.hiddenColumns);
-    if (config.sorting) setSorting(config.sorting);
-    if (config.filters) setColumnFilters(config.filters);
-    if (config.globalSearch) setGlobalFilter(config.globalSearch);
-  };
-
-  const currentConfig = {
-    columnsOrder: columns.map((col) => {
-      const colId = (col as { accessorKey?: string }).accessorKey;
-      return colId as string;
-    }),
-    hiddenColumns,
-    filters: columnFilters,
-    sorting,
-    globalSearch: globalFilter,
+    persistConfig({ columnsOrder: newOrder });
   };
 
   try {
@@ -201,7 +275,8 @@ export default function AuditPage() {
         <div className="rounded-lg bg-white p-6 shadow">
           <AdvancedTable
             data={Array.isArray(auditData?.data) ? auditData?.data : []}
-            columns={visibleColumns}
+            columns={columns}
+            hiddenColumns={hiddenColumns}
             sorting={sorting}
             onSortingChange={setSorting}
             columnFilters={columnFilters}
@@ -212,7 +287,11 @@ export default function AuditPage() {
             loading={isLoading}
             toolbar={
               <div className="flex gap-2">
-                <ColumnManager columns={columnList} onToggleColumn={toggleColumn} />
+                <ColumnManager
+                  columns={columnList}
+                  onToggleColumn={toggleColumn}
+                  nonHideableColumnIds={nonHideableColumnIds}
+                />
               </div>
             }
           />

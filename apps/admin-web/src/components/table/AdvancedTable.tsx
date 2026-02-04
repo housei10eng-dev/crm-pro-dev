@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useMemo } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -25,12 +25,14 @@ import {
   SortingState,
   ColumnFiltersState,
   OnChangeFn,
+  VisibilityState,
 } from '@tanstack/react-table';
 import { ChevronUp, ChevronDown, Search, X, GripVertical } from 'lucide-react';
 
 interface AdvancedTableProps<T> {
   data: T[];
   columns: ColumnDef<T>[];
+  hiddenColumns?: string[];
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
   columnFilters: ColumnFiltersState;
@@ -112,6 +114,7 @@ function DraggableHeader({
 export function AdvancedTable<T>({
   data,
   columns,
+  hiddenColumns,
   sorting,
   onSortingChange,
   columnFilters,
@@ -123,6 +126,14 @@ export function AdvancedTable<T>({
   loading,
   toolbar,
 }: AdvancedTableProps<T>) {
+  const columnVisibility = useMemo<VisibilityState | undefined>(() => {
+    if (!hiddenColumns || hiddenColumns.length === 0) return undefined;
+    return hiddenColumns.reduce<VisibilityState>((acc, columnId) => {
+      acc[columnId] = false;
+      return acc;
+    }, {});
+  }, [hiddenColumns]);
+
   const table = useReactTable({
     data,
     columns,
@@ -130,6 +141,7 @@ export function AdvancedTable<T>({
       sorting,
       columnFilters,
       globalFilter,
+      ...(columnVisibility ? { columnVisibility } : {}),
     },
     onSortingChange,
     onColumnFiltersChange,
@@ -141,34 +153,30 @@ export function AdvancedTable<T>({
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      distance: 8 as any,
+      activationConstraint: {
+        distance: 8,
+      },
     }),
     useSensor(KeyboardSensor)
   );
+
+  const headerGroups = table.getHeaderGroups();
+  const visibleLeafColumns = table.getVisibleLeafColumns();
+  const headerIds = visibleLeafColumns.map((col) => col.id);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      const headerGroups = table.getHeaderGroups();
-      const headers = headerGroups[0]?.headers || [];
-
-      const oldIndex = headers.findIndex((h) => h.id === String(active.id));
-      const newIndex = headers.findIndex((h) => h.id === String(over.id));
+      const oldIndex = headerIds.findIndex((id) => id === String(active.id));
+      const newIndex = headerIds.findIndex((id) => id === String(over.id));
 
       if (oldIndex !== -1 && newIndex !== -1) {
-        const newOrder = arrayMove(
-          headers.map((h) => h.id),
-          oldIndex,
-          newIndex
-        );
+        const newOrder = arrayMove(headerIds, oldIndex, newIndex);
         onColumnOrderChange?.(newOrder);
       }
     }
   };
-
-  const headerGroups = table.getHeaderGroups();
-  const headerIds = headerGroups[0]?.headers.map((h) => h.id) || [];
 
   return (
     <div className="space-y-4">
@@ -208,21 +216,23 @@ export function AdvancedTable<T>({
                     items={headerIds}
                     strategy={horizontalListSortingStrategy}
                   >
-                    {headerGroup.headers.map((header) => (
-                      <DraggableHeader
-                        key={header.id}
-                        id={header.id}
-                        isPlaceholder={header.isPlaceholder}
-                        canSort={header.column.getCanSort()}
-                        onSort={header.column.getToggleSortingHandler()}
-                        isSorted={header.column.getIsSorted()}
-                      >
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                      </DraggableHeader>
-                    ))}
+                    {headerGroup.headers
+                      .filter((header) => header.column.getIsVisible())
+                      .map((header) => (
+                        <DraggableHeader
+                          key={header.id}
+                          id={header.id}
+                          isPlaceholder={header.isPlaceholder}
+                          canSort={header.column.getCanSort()}
+                          onSort={() => header.column.toggleSorting()}
+                          isSorted={header.column.getIsSorted()}
+                        >
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext()
+                          )}
+                        </DraggableHeader>
+                      ))}
                   </SortableContext>
                 </tr>
               ))}
@@ -231,7 +241,7 @@ export function AdvancedTable<T>({
               {loading ? (
                 <tr>
                   <td
-                    colSpan={columns.length}
+                    colSpan={visibleLeafColumns.length}
                     className="px-4 py-8 text-center text-gray-500"
                   >
                     Carregando...
@@ -240,7 +250,7 @@ export function AdvancedTable<T>({
               ) : table.getRowModel().rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={columns.length}
+                    colSpan={visibleLeafColumns.length}
                     className="px-4 py-8 text-center text-gray-500"
                   >
                     Nenhum resultado encontrado

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { ColumnDef, SortingState, ColumnFiltersState } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import { useEmployees } from '../hooks/useEmployees';
@@ -8,6 +8,7 @@ import { ColumnManager } from '../components/table/ColumnManager';
 import { CustomFieldModal } from '../components/custom-fields/CustomFieldModal';
 import { format } from 'date-fns';
 import { TableConfig } from '../hooks/useTableConfig';
+import { useCreateView, useUpdateView, useViews } from '../hooks/useViews';
 
 interface Employee {
   id: string;
@@ -19,15 +20,29 @@ interface Employee {
   customFields?: Record<string, string | number | boolean>;
 }
 
+interface TableView {
+  id: string;
+  config?: Partial<TableConfig>;
+  isDefault?: boolean;
+  createdAt?: string;
+}
+
 export default function EmployeesPage() {
   const { data: employees, isLoading } = useEmployees();
   const { data: customFields } = useCustomFields('employee');
+  const { data: viewsData } = useViews('employee');
+  const updateView = useUpdateView();
+  const createView = useCreateView();
 
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [showFieldModal, setShowFieldModal] = useState(false);
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+  const [activeViewId, setActiveViewId] = useState<string | null>(null);
+  const hasAppliedViewRef = useRef(false);
+  const applyingViewRef = useRef(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Base columns
   const baseColumns: ColumnDef<Employee>[] = useMemo(
@@ -101,14 +116,7 @@ export default function EmployeesPage() {
     [baseColumns, customFieldColumns]
   );
 
-  // Column visibility management
-  const visibleColumns = useMemo(
-    () => columns.filter((col) => {
-      const colId = col.id || (col as { accessorKey?: string }).accessorKey;
-      return !hiddenColumns.includes(colId as string);
-    }),
-    [columns, hiddenColumns]
-  );
+  const nonHideableColumnIds = useMemo(() => ['name'], []);
 
   const columnList = useMemo(
     () =>
@@ -124,33 +132,99 @@ export default function EmployeesPage() {
     [columns, hiddenColumns]
   );
 
+  const buildConfig = useCallback(
+    (columnsOrder?: string[]): TableConfig => ({
+      columnsOrder:
+        columnsOrder ||
+        columns.map((col) => {
+          const colId = col.id || (col as { accessorKey?: string }).accessorKey;
+          return colId as string;
+        }),
+      hiddenColumns,
+      filters: columnFilters,
+      sorting,
+      globalSearch: globalFilter,
+    }),
+    [columns, hiddenColumns, columnFilters, sorting, globalFilter]
+  );
+
+  const applyConfig = useCallback((config: Partial<TableConfig>) => {
+    applyingViewRef.current = true;
+    if (config.hiddenColumns) setHiddenColumns(config.hiddenColumns);
+    if (config.sorting) {
+      setSorting(Array.isArray(config.sorting) ? config.sorting : []);
+    }
+    if (config.filters) {
+      setColumnFilters(Array.isArray(config.filters) ? config.filters : []);
+    }
+    if (config.globalSearch !== undefined) setGlobalFilter(config.globalSearch);
+    setTimeout(() => {
+      applyingViewRef.current = false;
+    }, 0);
+  }, []);
+
+  useEffect(() => {
+    const views = Array.isArray(viewsData) ? (viewsData as TableView[]) : [];
+    if (views.length === 0) return;
+    const active = views.find((view) => view.isDefault) || views[views.length - 1];
+    setActiveViewId(active.id);
+    if (!hasAppliedViewRef.current && active.config) {
+      applyConfig(active.config);
+      hasAppliedViewRef.current = true;
+    }
+  }, [viewsData, applyConfig]);
+
+  useEffect(() => {
+    const views = Array.isArray(viewsData) ? (viewsData as TableView[]) : [];
+    if (views.length > 0 || createView.isPending) return;
+    createView.mutate(
+      {
+        entityType: 'employee',
+        name: 'Default',
+        config: buildConfig(),
+        isDefault: true,
+      },
+      {
+        onSuccess: (response) => {
+          const created =
+            (response as { data?: TableView }).data ||
+            (response as unknown as TableView);
+          if (created?.id) setActiveViewId(created.id);
+        },
+      }
+    );
+  }, [viewsData, buildConfig, createView]);
+
+  const persistConfig = useCallback(
+    (override?: Partial<TableConfig>) => {
+      if (!activeViewId || applyingViewRef.current) return;
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        updateView.mutate({
+          id: activeViewId,
+          data: { config: { ...buildConfig(), ...override } },
+        });
+      }, 500);
+    },
+    [activeViewId, updateView, buildConfig]
+  );
+
+  useEffect(() => {
+    persistConfig();
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, [hiddenColumns, persistConfig]);
+
   const toggleColumn = (columnId: string) => {
+    if (nonHideableColumnIds.includes(columnId)) return;
     setHiddenColumns((prev) =>
       prev.includes(columnId) ? prev.filter((id) => id !== columnId) : [...prev, columnId]
     );
   };
 
   const handleColumnOrderChange = (newOrder: string[]) => {
-    // TODO: Persist to backend via Views API
-    // await viewsApi.updateColumnOrder('employee', newOrder);
-  };
-
-  const handleLoadView = (config: Partial<TableConfig>) => {
-    if (config.hiddenColumns) setHiddenColumns(config.hiddenColumns);
-    if (config.sorting) setSorting(config.sorting);
-    if (config.filters) setColumnFilters(config.filters);
-    if (config.globalSearch) setGlobalFilter(config.globalSearch);
-  };
-
-  const currentConfig = {
-    columnsOrder: columns.map((col) => {
-      const colId = col.id || (col as { accessorKey?: string }).accessorKey;
-      return colId as string;
-    }),
-    hiddenColumns,
-    filters: columnFilters,
-    sorting,
-    globalSearch: globalFilter,
+    persistConfig({ columnsOrder: newOrder });
   };
 
   return (
@@ -175,7 +249,8 @@ export default function EmployeesPage() {
       <div className="rounded-lg bg-white p-6 shadow">
         <AdvancedTable
           data={employees || []}
-          columns={visibleColumns}
+          columns={columns}
+          hiddenColumns={hiddenColumns}
           sorting={sorting}
           onSortingChange={setSorting}
           columnFilters={columnFilters}
@@ -186,7 +261,11 @@ export default function EmployeesPage() {
           loading={isLoading}
           toolbar={
             <div className="flex gap-2">
-              <ColumnManager columns={columnList} onToggleColumn={toggleColumn} />
+              <ColumnManager
+                columns={columnList}
+                onToggleColumn={toggleColumn}
+                nonHideableColumnIds={nonHideableColumnIds}
+              />
             </div>
           }
         />
