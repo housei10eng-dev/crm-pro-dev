@@ -48,7 +48,7 @@ export const auditApi = {
 };
 
 export const customFieldsApi = {
-  list: (entityType: 'company' | 'employee' | 'audit') =>
+  list: (entityType: 'company' | 'employee' | 'audit' | 'payment' | 'dre') =>
     api.get('/admin/custom-fields', { params: { entityType } }),
   create: (data: Record<string, unknown>) => api.post('/admin/custom-fields', data),
   update: (id: string, data: Record<string, unknown>) => api.patch(`/admin/custom-fields/${id}`, data),
@@ -56,7 +56,7 @@ export const customFieldsApi = {
 };
 
 export const viewsApi = {
-  list: (entityType: 'company' | 'employee' | 'audit') =>
+  list: (entityType: 'company' | 'employee' | 'audit' | 'payment' | 'dre' | 'dashboard') =>
     api.get('/admin/views', { params: { entityType } }),
   create: (data: Record<string, unknown>) => api.post('/admin/views', data),
   update: (id: string, data: Record<string, unknown>) => api.patch(`/admin/views/${id}`, data),

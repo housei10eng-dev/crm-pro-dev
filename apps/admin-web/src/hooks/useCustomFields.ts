@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { customFieldsApi } from '../lib/api';
 
-export function useCustomFields(entityType: 'company' | 'employee' | 'audit') {
+export function useCustomFields(
+  entityType: 'company' | 'employee' | 'audit' | 'payment' | 'dre'
+) {
   return useQuery({
     queryKey: ['customFields', entityType],
     queryFn: async () => {
@@ -18,6 +20,17 @@ export function useCreateCustomField() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: customFieldsApi.create,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customFields'] });
+    },
+  });
+}
+
+export function useUpdateCustomField() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      customFieldsApi.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customFields'] });
     },

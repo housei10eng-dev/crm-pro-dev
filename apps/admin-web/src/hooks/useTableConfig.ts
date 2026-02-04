@@ -4,6 +4,7 @@ import { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 export interface TableConfig {
   columnsOrder: string[];
   hiddenColumns: string[];
+  columnLabels?: Record<string, string>;
   filters: ColumnFiltersState;
   sorting: SortingState;
   globalSearch?: string;

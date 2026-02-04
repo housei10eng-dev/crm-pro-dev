@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { viewsApi } from '../lib/api';
 
-export function useViews(entityType: 'company' | 'employee' | 'audit') {
+export function useViews(
+  entityType: 'company' | 'employee' | 'audit' | 'payment' | 'dre' | 'dashboard'
+) {
   return useQuery({
     queryKey: ['views', entityType],
     queryFn: async () => {

@@ -3,9 +3,10 @@ import { useState } from 'react';
 import { useCreateCustomField } from '../../hooks/useCustomFields';
 
 interface CustomFieldModalProps {
-  entityType: 'company' | 'employee' | 'audit';
+  entityType: 'company' | 'employee' | 'audit' | 'payment' | 'dre';
   isOpen: boolean;
   onClose: () => void;
+  onCreated?: (field: { key?: string; label?: string; type?: string }) => void;
 }
 
 const FIELD_TYPES = [
@@ -17,7 +18,12 @@ const FIELD_TYPES = [
   { value: 'category', label: 'Categoria' },
 ];
 
-export function CustomFieldModal({ entityType, isOpen, onClose }: CustomFieldModalProps) {
+export function CustomFieldModal({
+  entityType,
+  isOpen,
+  onClose,
+  onCreated,
+}: CustomFieldModalProps) {
   const [label, setLabel] = useState('');
   const [key, setKey] = useState('');
   const [type, setType] = useState<string>('text');
@@ -28,9 +34,11 @@ export function CustomFieldModal({ entityType, isOpen, onClose }: CustomFieldMod
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    const generatedKey = key || `${generateKey(label)}_${Math.floor(Date.now() / 1000)}`;
+
     const fieldData: Record<string, unknown> = {
       label,
-      key,
+      key: generatedKey,
       type,
       entityType,
     };
@@ -40,11 +48,17 @@ export function CustomFieldModal({ entityType, isOpen, onClose }: CustomFieldMod
     }
 
     createMutation.mutate(fieldData, {
-      onSuccess: () => {
+      onSuccess: (response) => {
         setLabel('');
         setKey('');
         setType('text');
         setOptions('');
+        if (onCreated) {
+          const maybeData =
+            (response as { data?: { key?: string; label?: string; type?: string } }).data ||
+            (response as { key?: string; label?: string; type?: string });
+          onCreated(maybeData || { key: generatedKey, label, type });
+        }
         onClose();
       },
     });
@@ -61,9 +75,6 @@ export function CustomFieldModal({ entityType, isOpen, onClose }: CustomFieldMod
 
   const handleLabelChange = (value: string) => {
     setLabel(value);
-    if (!key || key === generateKey(label)) {
-      setKey(generateKey(value));
-    }
   };
 
   if (!isOpen) return null;
@@ -96,22 +107,6 @@ export function CustomFieldModal({ entityType, isOpen, onClose }: CustomFieldMod
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Chave (identificador)
-            </label>
-            <input
-              type="text"
-              required
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              className="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:outline-none font-mono text-sm"
-              placeholder="data_aniversario"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Usado internamente. Apenas letras minúsculas, números e underscores.
-            </p>
-          </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">

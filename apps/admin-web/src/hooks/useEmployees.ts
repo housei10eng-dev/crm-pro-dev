@@ -11,11 +11,32 @@ export function useEmployees() {
   });
 }
 
+export function useCreateEmployee() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: Record<string, unknown>) => employeesApi.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+}
+
 export function useUpdateEmployee() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       employeesApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    },
+  });
+}
+
+export function useSaveEmployeeCustomFields() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, values }: { id: string; values: Array<{ key: string; value: unknown }> }) =>
+      employeesApi.saveCustomFields(id, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
     },
