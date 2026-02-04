@@ -44,14 +44,31 @@ enum PaymentStatus {
   CHARGEBACK
 }
 
+enum CustomEntityType {
+  company
+  employee
+}
+
+enum CustomFieldType {
+  text
+  date
+  select
+  money
+  number
+  boolean
+}
+
 model Tenant {
   id        String   @id @default(uuid())
   name      String
   createdAt DateTime @default(now())
 
-  users     User[]
-  companies Company[]
-  auditLogs AuditLog[]
+  users                   User[]
+  companies               Company[]
+  auditLogs               AuditLog[]
+  customFieldDefinitions  CustomFieldDefinition[]
+  tableViews              TableView[]
+  adminSettings           AdminSettings?
 }
 
 model User {
@@ -68,6 +85,7 @@ model User {
   roles  UserRole[]
   audit  AuditLog[] @relation("actor")
   criticalSessions CriticalEditSession[]
+  tableViews TableView[]
 }
 
 model UserRole {
@@ -135,6 +153,16 @@ model BillingPayment {
   status     PaymentStatus
   gatewayChargeId String?
   attemptedAt DateTime @default(now())
+  paidAt     DateTime?
+  
+  // LGPD-safe payment metadata
+  cardLast4              String?  @db.VarChar(4)
+  cardBrand              String?  @db.VarChar(50)
+  cardHolderName         String?  @db.VarChar(200)
+  providerPaymentMethodId String? @db.VarChar(255)
+  providerChargeId       String?  @db.VarChar(255)
+  providerTransactionId  String?  @db.VarChar(255)
+  authorizationCode      String?  @db.VarChar(100)
 
   invoice BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
@@ -204,4 +232,69 @@ model AuditLog {
   actor  User?  @relation("actor", fields: [actorId], references: [id])
 
   @@index([tenantId, entityType, entityId, createdAt])
+}
+
+model CustomFieldDefinition {
+  id        String              @id @default(uuid())
+  tenantId  String
+  entityType CustomEntityType
+  key       String
+  label     String
+  type      CustomFieldType
+  options   Json?
+  position  Int                 @default(0)
+  isActive  Boolean             @default(true)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  values CustomFieldValue[]
+
+  @@unique([tenantId, entityType, key])
+  @@index([tenantId, entityType, position])
+}
+
+model CustomFieldValue {
+  id         String @id @default(uuid())
+  tenantId   String
+  entityType CustomEntityType
+  entityId   String
+  fieldId    String
+  value      Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  field CustomFieldDefinition @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, entityType, entityId, fieldId])
+  @@index([tenantId, entityType, entityId])
+}
+
+model TableView {
+  id         String   @id @default(uuid())
+  tenantId   String
+  userId     String
+  entityType String
+  name       String
+  config     Json
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, entityType, name])
+  @@index([tenantId, userId, entityType, isDefault])
+}
+
+model AdminSettings {
+  tenantId        String @id
+  brandName       String?
+  logo            String?
+  loginBackground String?
+  theme           Json?
+  updatedAt       DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }

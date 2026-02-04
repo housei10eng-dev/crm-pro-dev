@@ -163,7 +163,15 @@ async function main() {
         amount: 8000,
         method: PaymentMethod.CARD,
         status,
-        gatewayChargeId: `gw_charge_${m}`
+        gatewayChargeId: `gw_charge_${m}`,
+        paidAt: status === PaymentStatus.PAID ? new Date(due.getTime() + 2 * 3600 * 1000) : null,
+        cardLast4: "4242",
+        cardBrand: "Visa",
+        cardHolderName: "João da Silva",
+        providerPaymentMethodId: `pm_demo_${m}`,
+        providerChargeId: `ch_demo_${m}`,
+        providerTransactionId: `txn_demo_${m}`,
+        authorizationCode: status === PaymentStatus.PAID ? `AUTH${m}${Math.random().toString(36).slice(2,8).toUpperCase()}` : null
       }
     });
 

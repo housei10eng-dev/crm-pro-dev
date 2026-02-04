@@ -9,14 +9,19 @@ import { UnlockCriticalDto } from "./dto/unlock-critical.dto";
 import { RolesGuard } from "../../common/guards/roles.guard";
 import { MasterOnlyGuard } from "../../common/guards/master-only.guard";
 import { Roles } from "../../common/decorators/roles.decorator";
-import { RoleName } from "@prisma/client";
+import { RoleName, CustomEntityType } from "@prisma/client";
+import { CustomFieldsService } from "../custom-fields/custom-fields.service";
+import { SaveCustomFieldValuesDto } from "../custom-fields/dtos";
 
 @ApiTags("admin/companies")
 @ApiBearerAuth()
 @UseGuards(AuthGuard("jwt"), RolesGuard, MasterOnlyGuard)
 @Controller("admin/companies")
 export class CompaniesController {
-  constructor(private svc: CompaniesService) {}
+  constructor(
+    private svc: CompaniesService,
+    private customFieldsService: CustomFieldsService,
+  ) {}
 
   @Get()
   async list(
@@ -57,5 +62,31 @@ export class CompaniesController {
   @Get(":id/finance")
   async finance(@Request() req: any, @Param("id") id: string) {
     return this.svc.finance(req.user, id);
+  }
+
+  @Get(":id/custom-fields")
+  async getCustomFields(
+    @Request() req: any,
+    @Param("id") companyId: string,
+  ) {
+    return this.customFieldsService.getCustomFieldValues(
+      req.user.tenantId,
+      CustomEntityType.company,
+      companyId,
+    );
+  }
+
+  @Patch(":id/custom-fields")
+  async saveCustomFields(
+    @Request() req: any,
+    @Param("id") companyId: string,
+    @Body() dto: SaveCustomFieldValuesDto,
+  ) {
+    return this.customFieldsService.saveCustomFieldValues(
+      req.user.tenantId,
+      CustomEntityType.company,
+      companyId,
+      dto.values,
+    );
   }
 }

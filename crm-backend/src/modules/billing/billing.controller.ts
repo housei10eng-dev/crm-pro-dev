@@ -61,8 +61,82 @@ export class BillingController {
       data: { tenantId, eventId, type: String(body?.type ?? "unknown"), payload: body, signatureHash },
     });
 
+    // Process payment metadata if present (LGPD-safe)
+    await this.processPaymentMetadata(tenantId, body);
+
     console.info({ eventId, tenantId, type: body?.type, timestamp }, "Webhook processed");
     return { ok: true };
+  }
+
+  private async processPaymentMetadata(tenantId: string, payload: any) {
+    // Extract payment metadata from webhook payload
+    const paymentData = payload?.data?.payment || payload?.payment;
+    if (!paymentData) return;
+
+    const invoiceId = paymentData?.invoiceId || payload?.invoiceId;
+    if (!invoiceId) return;
+
+    // Find or create payment record
+    const existingPayment = await this.prisma.billingPayment.findFirst({
+      where: {
+        tenantId,
+        invoiceId,
+        providerChargeId: paymentData?.chargeId || paymentData?.id,
+      },
+    });
+
+    if (existingPayment) return; // Already processed
+
+    // Extract LGPD-safe card metadata (never store full PAN/CVV)
+    const cardMetadata = paymentData?.card || paymentData?.paymentMethod?.card;
+    
+    await this.prisma.billingPayment.create({
+      data: {
+        tenantId,
+        invoiceId,
+        amount: paymentData?.amount || 0,
+        method: this.parsePaymentMethod(paymentData?.method),
+        status: this.parsePaymentStatus(paymentData?.status),
+        attemptedAt: paymentData?.attemptedAt ? new Date(paymentData.attemptedAt) : new Date(),
+        paidAt: paymentData?.paidAt ? new Date(paymentData.paidAt) : null,
+        gatewayChargeId: paymentData?.chargeId || paymentData?.id || null,
+        cardLast4: cardMetadata?.last4 || null,
+        cardBrand: cardMetadata?.brand || null,
+        cardHolderName: cardMetadata?.holderName || null,
+        providerPaymentMethodId: paymentData?.paymentMethodId || cardMetadata?.id || null,
+        providerChargeId: paymentData?.chargeId || paymentData?.id || null,
+        providerTransactionId: paymentData?.transactionId || null,
+        authorizationCode: paymentData?.authorizationCode || null,
+      },
+    }).catch(err => {
+      console.error({ tenantId, invoiceId, error: err.message }, "Failed to create billing payment");
+    });
+  }
+
+  private parsePaymentMethod(method: string): any {
+    const map: Record<string, string> = {
+      'card': 'CARD',
+      'credit_card': 'CARD',
+      'pix': 'PIX',
+      'boleto': 'BOLETO',
+      'bank_transfer': 'TRANSFER',
+    };
+    return map[method?.toLowerCase()] || 'OTHER';
+  }
+
+  private parsePaymentStatus(status: string): any {
+    const map: Record<string, string> = {
+      'paid': 'PAID',
+      'succeeded': 'PAID',
+      'open': 'OPEN',
+      'pending': 'OPEN',
+      'failed': 'FAILED',
+      'canceled': 'CANCELED',
+      'cancelled': 'CANCELED',
+      'refunded': 'REFUNDED',
+      'chargeback': 'CHARGEBACK',
+    };
+    return map[status?.toLowerCase()] || 'OPEN';
   }
 }
 

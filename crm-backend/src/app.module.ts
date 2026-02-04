@@ -8,6 +8,9 @@ import { EmployeesModule } from "./modules/employees/employees.module";
 import { AuditModule } from "./modules/audit/audit.module";
 import { BillingModule } from "./modules/billing/billing.module";
 import { TenantAppModule } from "./modules/app/app.module";
+import { CustomFieldsModule } from "./modules/custom-fields/custom-fields.module";
+import { ViewsModule } from "./modules/views/views.module";
+import { SettingsModule } from "./modules/settings/settings.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -26,6 +29,9 @@ import { HealthController } from "./health.controller";
     AuditModule,
     BillingModule,
     TenantAppModule,
+    CustomFieldsModule,
+    ViewsModule,
+    SettingsModule,
   ],
   controllers: [HealthController],
 })

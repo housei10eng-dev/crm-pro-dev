@@ -39,6 +39,8 @@ export class CompaniesService {
         cycle: true,
         segment: true,
         acquiredAt: true,
+        email: true,
+        phone: true,
         createdAt: true,
       },
     });

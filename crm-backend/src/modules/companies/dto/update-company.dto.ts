@@ -1,11 +1,11 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { CompanyStatus } from "@prisma/client";
-import { IsOptional, IsString, IsEmail, IsEnum } from "class-validator";
+import { IsOptional, IsString, IsEmail, IsEnum, MaxLength } from "class-validator";
 
 export class UpdateCompanyDto {
   // Non-critical (editable)
   @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() phone?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() segment?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() internalNotes?: string;
   @ApiPropertyOptional({ enum: CompanyStatus }) @IsOptional() @IsEnum(CompanyStatus) status?: CompanyStatus;

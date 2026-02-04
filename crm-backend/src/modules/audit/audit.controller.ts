@@ -26,6 +26,7 @@ export class AuditController {
       if (from) where.createdAt.gte = new Date(from);
       if (to) where.createdAt.lte = new Date(to);
     }
-    return this.prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 });
+    const data = await this.prisma.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, take: 200 });
+    return { data };
   }
 }
