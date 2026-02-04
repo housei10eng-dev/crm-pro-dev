@@ -4,6 +4,7 @@ import {
   CreateTableViewDto,
   UpdateTableViewDto,
 } from './dtos';
+import { normalizeEntityType } from '../../common/utils/entity-type';
 
 @Injectable()
 export class ViewsService {
@@ -14,13 +15,16 @@ export class ViewsService {
     userId: string,
     dto: CreateTableViewDto,
   ) {
+    const normalizedEntityType = normalizeEntityType(dto.entityType);
+    dto.entityType = normalizedEntityType;
+
     // Check if view name already exists for this user + entityType
     const existing = await this.prisma.tableView.findUnique({
       where: {
         tenantId_userId_entityType_name: {
           tenantId,
           userId,
-          entityType: dto.entityType,
+          entityType: normalizedEntityType,
           name: dto.name,
         },
       },
@@ -38,7 +42,7 @@ export class ViewsService {
         where: {
           tenantId,
           userId,
-          entityType: dto.entityType,
+          entityType: normalizedEntityType,
           isDefault: true,
         },
         data: { isDefault: false },
@@ -49,7 +53,7 @@ export class ViewsService {
       data: {
         tenantId,
         userId,
-        entityType: dto.entityType,
+        entityType: normalizedEntityType,
         name: dto.name,
         config: dto.config,
         isDefault: dto.isDefault ?? false,
@@ -62,16 +66,31 @@ export class ViewsService {
     userId: string,
     entityType: string,
   ) {
-    return this.prisma.tableView.findMany({
+    const normalizedEntityType = normalizeEntityType(entityType);
+    const legacyPlural =
+      normalizedEntityType === 'company'
+        ? 'companies'
+        : normalizedEntityType === 'employee'
+          ? 'employees'
+          : 'audits';
+
+    const views = await this.prisma.tableView.findMany({
       where: {
         tenantId,
         userId,
-        entityType,
+        entityType: {
+          in: [normalizedEntityType, legacyPlural],
+        },
       },
       orderBy: {
         createdAt: 'asc',
       },
     });
+
+    return views.map((view) => ({
+      ...view,
+      entityType: normalizeEntityType(view.entityType),
+    }));
   }
 
   async updateTableView(
@@ -103,14 +122,25 @@ export class ViewsService {
       });
     }
 
-    return this.prisma.tableView.update({
+    const updateData: any = {
+      ...(dto.name !== undefined && { name: dto.name }),
+      ...(dto.config !== undefined && { config: dto.config as any }),
+      ...(dto.isDefault !== undefined && { isDefault: dto.isDefault }),
+    };
+
+    if (dto.entityType !== undefined) {
+      updateData.entityType = normalizeEntityType(dto.entityType);
+    }
+
+    const updated = await this.prisma.tableView.update({
       where: { id: viewId },
-      data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.config !== undefined && { config: dto.config as any }),
-        ...(dto.isDefault !== undefined && { isDefault: dto.isDefault }),
-      },
+      data: updateData,
     });
+
+    return {
+      ...updated,
+      entityType: normalizeEntityType(updated.entityType),
+    };
   }
 
   async deleteTableView(
@@ -127,9 +157,14 @@ export class ViewsService {
       throw new BadRequestException('Table view not found');
     }
 
-    return this.prisma.tableView.delete({
+    const deleted = await this.prisma.tableView.delete({
       where: { id: viewId },
     });
+
+    return {
+      ...deleted,
+      entityType: normalizeEntityType(deleted.entityType),
+    };
   }
 
   async setDefaultView(
@@ -158,9 +193,14 @@ export class ViewsService {
       data: { isDefault: false },
     });
 
-    return this.prisma.tableView.update({
+    const updated = await this.prisma.tableView.update({
       where: { id: viewId },
       data: { isDefault: true },
     });
+
+    return {
+      ...updated,
+      entityType: normalizeEntityType(updated.entityType),
+    };
   }
 }

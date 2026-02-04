@@ -1,82 +1,233 @@
-import { useQuery } from '@tanstack/react-query';
-import { adminApi } from '../lib/api';
+import { useState, useMemo } from 'react';
+import { ColumnDef, SortingState, ColumnFiltersState } from '@tanstack/react-table';
+import { useAudit } from '../hooks/useAudit';
+import { AdvancedTable } from '../components/table/AdvancedTable';
+import { ColumnManager } from '../components/table/ColumnManager';
+import { format } from 'date-fns';
+import { TableConfig } from '../hooks/useTableConfig';
+
+interface AuditLog {
+  id: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  actorRole: string;
+  createdAt: string;
+}
+
+function safeFormatDate(value: string | null | undefined) {
+  if (!value) return '-';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return format(parsed, 'dd/MM/yyyy HH:mm:ss');
+}
+
+function safeRenderValue(value: unknown) {
+  if (value === null || value === undefined) return '-';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (typeof value === 'object') {
+    const maybeName = (value as { name?: string }).name;
+    if (maybeName) return maybeName;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '[obj]';
+    }
+  }
+  return String(value);
+}
 
 export default function AuditPage() {
-  const { data: logs, isLoading, error } = useQuery({
-    queryKey: ['audit'],
-    queryFn: () => adminApi.audit.list(),
-  });
+  const { data: auditData, isLoading } = useAudit();
 
-  if (isLoading) {
-    return (
-      <div className="p-8">
-        <div className="text-lg">Carregando logs...</div>
-      </div>
-    );
-  }
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
 
-  if (error) {
-    return (
-      <div className="p-8">
-        <div className="text-red-600">Erro ao carregar audit logs: {(error as Error).message}</div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="p-8">
-      <h1 className="mb-6 text-3xl font-bold">Audit Logs</h1>
-
-      {!logs || logs.length === 0 ? (
-        <div className="rounded-lg bg-white p-6 text-center shadow">
-          <p className="text-gray-600">Nenhum log de auditoria encontrado.</p>
-        </div>
-      ) : (
-        <div className="overflow-hidden rounded-lg bg-white shadow">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Data
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Entidade
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Ação
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Campo
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  Ator
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
-              {logs.map((log) => (
-                <tr key={log.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {new Date(log.createdAt).toLocaleString('pt-BR')}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                    {log.entityType}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-900">
-                    {log.action}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {log.field}
-                  </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-500">
-                    {log.actorRole}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+  const columns: ColumnDef<AuditLog>[] = useMemo(
+    () => [
+      {
+        accessorKey: 'createdAt',
+        header: 'Data/Hora',
+        cell: ({ getValue }) => {
+          const date = getValue() as string | null | undefined;
+          return safeFormatDate(date);
+        },
+        enableSorting: true,
+      },
+      {
+        accessorKey: 'entityType',
+        header: 'Entidade',
+        enableSorting: true,
+      },
+      {
+        accessorKey: 'entityId',
+        header: 'ID da Entidade',
+        cell: ({ getValue }) => {
+          const id = getValue() as string | null | undefined;
+          if (!id) return <span className="text-gray-400">-</span>;
+          return <span className="font-mono text-xs">{id.slice(0, 8)}...</span>;
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'action',
+        header: 'Ação',
+        cell: ({ getValue }) => {
+          const action = (getValue() as string | null | undefined) || 'UNKNOWN';
+          const colors = {
+            CREATE: 'bg-green-100 text-green-800',
+            UPDATE: 'bg-blue-100 text-blue-800',
+            DELETE: 'bg-red-100 text-red-800',
+          };
+          return (
+            <span className={`rounded-full px-2 py-1 text-xs font-semibold ${colors[action as keyof typeof colors] || 'bg-gray-100 text-gray-800'}`}>
+              {action}
+            </span>
+          );
+        },
+        enableSorting: true,
+      },
+      {
+        accessorKey: 'field',
+        header: 'Campo',
+        enableSorting: true,
+      },
+      {
+        accessorKey: 'oldValue',
+        header: 'Valor Anterior',
+        cell: ({ getValue }) => {
+          const value = getValue();
+          const rendered = safeRenderValue(value);
+          return rendered !== '-' ? (
+            <span className="text-gray-600">{rendered}</span>
+          ) : (
+            <span className="text-gray-400">-</span>
+          );
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'newValue',
+        header: 'Novo Valor',
+        cell: ({ getValue }) => {
+          const value = getValue();
+          const rendered = safeRenderValue(value);
+          return rendered !== '-' ? (
+            <span className="text-gray-900 font-medium">{rendered}</span>
+          ) : (
+            <span className="text-gray-400">-</span>
+          );
+        },
+        enableSorting: false,
+      },
+      {
+        accessorKey: 'actorRole',
+        header: 'Ator',
+        enableSorting: true,
+      },
+    ],
+    []
   );
+
+  // Column visibility management
+  const visibleColumns = useMemo(
+    () => columns.filter((col) => {
+      const colId = (col as { accessorKey?: string }).accessorKey;
+      return !hiddenColumns.includes(colId as string);
+    }),
+    [columns, hiddenColumns]
+  );
+
+  const columnList = useMemo(
+    () =>
+      columns.map((col) => {
+        const colId = (col as { accessorKey?: string }).accessorKey;
+        const colHeader = (col as { header?: string }).header;
+        return {
+          id: colId as string,
+          label: colHeader as string,
+          visible: !hiddenColumns.includes(colId as string),
+        };
+      }),
+    [columns, hiddenColumns]
+  );
+
+  const toggleColumn = (columnId: string) => {
+    setHiddenColumns((prev) =>
+      prev.includes(columnId) ? prev.filter((id) => id !== columnId) : [...prev, columnId]
+    );
+  };
+
+  const handleColumnOrderChange = (newOrder: string[]) => {
+    // TODO: Persist to backend via Views API
+    // await viewsApi.updateColumnOrder('audit', newOrder);
+  };
+
+  const handleLoadView = (config: Partial<TableConfig>) => {
+    if (config.hiddenColumns) setHiddenColumns(config.hiddenColumns);
+    if (config.sorting) setSorting(config.sorting);
+    if (config.filters) setColumnFilters(config.filters);
+    if (config.globalSearch) setGlobalFilter(config.globalSearch);
+  };
+
+  const currentConfig = {
+    columnsOrder: columns.map((col) => {
+      const colId = (col as { accessorKey?: string }).accessorKey;
+      return colId as string;
+    }),
+    hiddenColumns,
+    filters: columnFilters,
+    sorting,
+    globalSearch: globalFilter,
+  };
+
+  try {
+    return (
+      <div className="p-8">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-900">Logs de Auditoria</h1>
+          <p className="mt-2 text-sm text-gray-600">
+            Visualize todas as alterações realizadas no sistema com WORM (Write Once Read Many).
+          </p>
+        </div>
+
+        <div className="rounded-lg bg-white p-6 shadow">
+          <AdvancedTable
+            data={Array.isArray(auditData?.data) ? auditData?.data : []}
+            columns={visibleColumns}
+            sorting={sorting}
+            onSortingChange={setSorting}
+            columnFilters={columnFilters}
+            onColumnFiltersChange={setColumnFilters}
+            globalFilter={globalFilter}
+            onGlobalFilterChange={setGlobalFilter}
+            onColumnOrderChange={handleColumnOrderChange}
+            loading={isLoading}
+            toolbar={
+              <div className="flex gap-2">
+                <ColumnManager columns={columnList} onToggleColumn={toggleColumn} />
+              </div>
+            }
+          />
+        </div>
+      </div>
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro desconhecido';
+    return (
+      <div className="p-8">
+        <div className="rounded-lg bg-white p-6 shadow">
+          <h1 className="text-2xl font-bold text-red-600">Erro ao carregar auditoria</h1>
+          <p className="mt-2 text-sm text-gray-700">{message}</p>
+        </div>
+      </div>
+    );
+  }
 }

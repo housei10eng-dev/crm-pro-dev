@@ -8,6 +8,8 @@ import CompanyDetailPage from './pages/CompanyDetailPage';
 import AuditPage from './pages/AuditPage';
 import EmployeesPage from './pages/EmployeesPage';
 import SettingsPage from './pages/SettingsPage';
+import PaymentsPage from './pages/PaymentsPage';
+import DREPage from './pages/DREPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useSession();
@@ -56,6 +58,8 @@ export default function AppRoutes() {
         <Route path="companies/:id" element={<CompanyDetailPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="employees" element={<EmployeesPage />} />
+        <Route path="payments" element={<PaymentsPage />} />
+        <Route path="dre" element={<DREPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/admin" replace />} />

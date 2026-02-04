@@ -9,7 +9,10 @@ export default function CompanyDetailPage() {
 
   const { data: company, isLoading, error } = useQuery({
     queryKey: ['company', id],
-    queryFn: () => adminApi.companies.get(id!),
+    queryFn: async () => {
+      const { data } = await adminApi.companies.getById(id!);
+      return data;
+    },
     enabled: !!id,
   });
 

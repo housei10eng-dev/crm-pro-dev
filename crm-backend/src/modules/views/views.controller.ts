@@ -10,6 +10,7 @@ import {
   UseGuards,
   Request,
   HttpCode,
+  BadRequestException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -24,6 +25,7 @@ import {
 } from './dtos';
 import { MasterOnlyGuard } from '../../common/guards/master-only.guard';
 import { AuthGuard } from '@nestjs/passport';
+import { normalizeEntityType } from '../../common/utils/entity-type';
 
 @ApiTags('Admin - Views')
 @Controller('admin/views')
@@ -43,9 +45,10 @@ export class ViewsController {
     @Query('entityType') entityType?: string,
   ) {
     if (!entityType) {
-      throw new Error('entityType query parameter is required');
+      throw new BadRequestException('entityType query parameter is required');
     }
-    return this.viewsService.getTableViews(req.user.tenantId, req.user.id, entityType);
+    const normalized = normalizeEntityType(entityType);
+    return this.viewsService.getTableViews(req.user.tenantId, req.user.id, normalized);
   }
 
   @Post()
@@ -58,6 +61,7 @@ export class ViewsController {
     @Request() req: any,
     @Body() dto: CreateTableViewDto,
   ) {
+    dto.entityType = normalizeEntityType(dto.entityType);
     return this.viewsService.createTableView(req.user.tenantId, req.user.id, dto);
   }
 
@@ -72,6 +76,9 @@ export class ViewsController {
     @Param('id') viewId: string,
     @Body() dto: UpdateTableViewDto,
   ) {
+    if (dto.entityType) {
+      dto.entityType = normalizeEntityType(dto.entityType);
+    }
     return this.viewsService.updateTableView(
       req.user.tenantId,
       req.user.id,

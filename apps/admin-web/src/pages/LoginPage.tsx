@@ -15,8 +15,9 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-    } catch (err: any) {
-      setError(err.message || 'Falha no login. Verifique suas credenciais.');
+    } catch (err) {
+      const error = err as Error;
+      setError(error.message || 'Falha no login. Verifique suas credenciais.');
     } finally {
       setLoading(false);
     }

@@ -2,7 +2,7 @@ import { IsString, IsObject, IsOptional, IsBoolean } from 'class-validator';
 
 export class CreateTableViewDto {
   @IsString()
-  entityType!: string; // "companies" | "employees" | "audit"
+  entityType!: string; // "company" | "employee" | "audit" (plural accepted and normalized)
 
   @IsString()
   name!: string;

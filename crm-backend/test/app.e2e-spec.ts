@@ -240,6 +240,64 @@ describe("E2E", () => {
       .expect(200);
   });
 
+  it("views entityType normalization", async () => {
+    const viewName = `Compat View ${Date.now()}`;
+
+    const createRes = await request(app.getHttpServer())
+      .post("/admin/views")
+      .set("Authorization", `Bearer ${masterToken}`)
+      .send({
+        entityType: "companies",
+        name: viewName,
+        config: {
+          columnsOrder: ["name"],
+          hiddenColumns: [],
+          filters: {},
+          sorting: { field: "name", direction: "asc" },
+        },
+        isDefault: false,
+      })
+      .expect(201);
+
+    expect(createRes.body.entityType).toBe("company");
+
+    const listPluralRes = await request(app.getHttpServer())
+      .get("/admin/views?entityType=companies")
+      .set("Authorization", `Bearer ${masterToken}`)
+      .expect(200);
+
+    const listSingularRes = await request(app.getHttpServer())
+      .get("/admin/views?entityType=company")
+      .set("Authorization", `Bearer ${masterToken}`)
+      .expect(200);
+
+    expect(listPluralRes.body.length).toBeGreaterThan(0);
+    expect(listSingularRes.body.length).toBeGreaterThan(0);
+
+    const createdId = createRes.body.id;
+    const pluralMatch = listPluralRes.body.find((v: any) => v.id === createdId);
+    const singularMatch = listSingularRes.body.find((v: any) => v.id === createdId);
+
+    expect(pluralMatch?.entityType).toBe("company");
+    expect(singularMatch?.entityType).toBe("company");
+
+    await request(app.getHttpServer())
+      .post("/admin/views")
+      .set("Authorization", `Bearer ${masterToken}`)
+      .send({
+        entityType: "invalid",
+        name: `Invalid View ${Date.now()}`,
+        config: { columnsOrder: [], hiddenColumns: [], filters: {}, sorting: {} },
+        isDefault: false,
+      })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .delete(`/admin/views/${createdId}`)
+      .set("Authorization", `Bearer ${masterToken}`)
+      .expect(200);
+  });
+
   it("admin settings workflow", async () => {
     // Get settings
     const getRes = await request(app.getHttpServer())

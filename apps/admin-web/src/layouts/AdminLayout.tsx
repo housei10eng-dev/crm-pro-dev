@@ -1,5 +1,5 @@
 import { Outlet, NavLink } from 'react-router-dom';
-import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut } from 'lucide-react';
+import { LayoutDashboard, Building2, FileText, Users, Settings, LogOut, CreditCard, TrendingUp } from 'lucide-react';
 import { useSession } from '../lib/session';
 
 export default function AdminLayout() {
@@ -10,6 +10,8 @@ export default function AdminLayout() {
     { to: '/admin/companies', icon: Building2, label: 'Companies' },
     { to: '/admin/audit', icon: FileText, label: 'Audit' },
     { to: '/admin/employees', icon: Users, label: 'Employees' },
+    { to: '/admin/payments', icon: CreditCard, label: 'Payments' },
+    { to: '/admin/dre', icon: TrendingUp, label: 'DRE' },
     { to: '/admin/settings', icon: Settings, label: 'Settings' },
   ];
 

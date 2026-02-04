@@ -24,7 +24,8 @@ export class EmployeesController {
   @Roles(RoleName.MASTER_ADMIN)
   @Get()
   async list(@Request() req: any) {
-    return this.svc.list(req.user);
+    const employees = await this.svc.list(req.user);
+    return employees;
   }
 
   @Roles(RoleName.MASTER_ADMIN)

@@ -1,7 +1,21 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Session, webStorage } from '@crm/api';
-import { authApi, setUnauthorizedCallback } from './api';
+import { authApi } from './api';
+
+interface Session {
+  id: string;
+  email: string;
+  name: string;
+  tenantId: string | null;
+  scope: 'admin' | 'tenant' | string;
+  accessToken: string;
+}
+
+const webStorage = {
+  getToken: () => localStorage.getItem('token'),
+  setToken: (token: string) => localStorage.setItem('token', token),
+  clearToken: () => localStorage.removeItem('token'),
+};
 
 interface SessionContextValue {
   session: Session | null;
@@ -18,16 +32,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    setUnauthorizedCallback(() => {
-      setSession(null);
-      navigate('/login');
-    });
-
     const initSession = async () => {
       const token = webStorage.getToken();
       if (token) {
         try {
-          const me = await authApi.me();
+          const { data: me } = await authApi.me();
           setSession({ ...me, accessToken: token });
         } catch (error) {
           console.error('Failed to restore session:', error);
@@ -41,10 +50,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   }, [navigate]);
 
   const login = async (email: string, password: string) => {
-    const { accessToken } = await authApi.login({ email, password });
+    const { data } = await authApi.login(email, password);
+    const { accessToken } = data;
     webStorage.setToken(accessToken);
 
-    const me = await authApi.me();
+    const { data: me } = await authApi.me();
     const newSession = { ...me, accessToken };
     setSession(newSession);
 
