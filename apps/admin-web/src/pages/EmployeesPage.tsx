@@ -67,6 +67,8 @@ export default function EmployeesPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [newRow, setNewRow] = useState<Partial<Employee>>({});
   const [newCustomFields, setNewCustomFields] = useState<Record<string, unknown>>({});
+  const newRowRef = useRef<Partial<Employee>>({});
+  const newCustomFieldsRef = useRef<Record<string, unknown>>({});
   const [newRowId, setNewRowId] = useState<string | null>(null);
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [activeViewId, setActiveViewId] = useState<string | null>(null);
@@ -84,30 +86,39 @@ export default function EmployeesPage() {
     setIsCreating(false);
     setNewRow({});
     setNewCustomFields({});
+    newRowRef.current = {};
+    newCustomFieldsRef.current = {};
     setNewRowId(null);
     setEditingRowId(null);
   }, []);
 
   const handleSaveNewRow = useCallback(() => {
-    if (!newRow.name) {
+    const currentRow = newRowRef.current;
+    const currentCustomFields = newCustomFieldsRef.current;
+
+    if (!currentRow.name) {
       alert('Nome é obrigatório');
       return;
     }
-    if (!newRow.email) {
+    if (!currentRow.email) {
       alert('Email é obrigatório');
       return;
     }
-    if (!/^\S+@\S+\.\S+$/.test(String(newRow.email))) {
+    if (!/^\S+@\S+\.\S+$/.test(String(currentRow.email))) {
       alert('Email inválido');
       return;
     }
 
-    const rolesValue = (newRow.roles as unknown as string[]) || [];
+    const rolesValue = Array.isArray(currentRow.roles)
+      ? ((currentRow.roles as unknown as Array<{ role?: string }>).map((role) =>
+          typeof role === 'string' ? role : role?.role
+        ).filter(Boolean) as string[])
+      : [];
     const payload = {
-      name: newRow.name,
-      email: newRow.email,
-      status: newRow.status || 'ACTIVE',
-      roles: rolesValue.length > 0 ? rolesValue.map((role) => ({ role })) : undefined,
+      name: currentRow.name,
+      email: currentRow.email,
+      status: currentRow.status || 'ACTIVE',
+      roles: rolesValue.length > 0 ? rolesValue : undefined,
     };
 
     createEmployee.mutate(payload, {
@@ -115,10 +126,10 @@ export default function EmployeesPage() {
         const created =
           (response as { data?: { id?: string } }).data ||
           (response as { id?: string });
-        if (created?.id && Object.keys(newCustomFields).length > 0) {
+        if (created?.id && Object.keys(currentCustomFields).length > 0) {
           saveCustomFields.mutate({
             id: created.id,
-            values: Object.entries(newCustomFields).map(([key, value]) => ({
+            values: Object.entries(currentCustomFields).map(([key, value]) => ({
               key,
               value,
             })),
@@ -127,7 +138,7 @@ export default function EmployeesPage() {
         handleCancelNewRow();
       },
     });
-  }, [createEmployee, handleCancelNewRow, newCustomFields, newRow, saveCustomFields]);
+  }, [createEmployee, handleCancelNewRow, saveCustomFields]);
 
   const roleOptions = useMemo(() => {
     const list = Array.isArray(employees)
@@ -155,8 +166,10 @@ export default function EmployeesPage() {
             return (
               <input
                 ref={nameInputRef}
-                value={(newRow.name as string) || ''}
-                onChange={(event) => setNewRow((prev) => ({ ...prev, name: event.target.value }))}
+                defaultValue={String(newRowRef.current.name ?? '')}
+                onChange={(event) => {
+                  newRowRef.current = { ...newRowRef.current, name: event.target.value };
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') handleSaveNewRow();
                   if (event.key === 'Escape') handleCancelNewRow();
@@ -179,8 +192,10 @@ export default function EmployeesPage() {
           if (isEditing) {
             return (
               <input
-                value={(newRow.email as string) || ''}
-                onChange={(event) => setNewRow((prev) => ({ ...prev, email: event.target.value }))}
+                defaultValue={String(newRowRef.current.email ?? '')}
+                onChange={(event) => {
+                  newRowRef.current = { ...newRowRef.current, email: event.target.value };
+                }}
                 type="email"
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') handleSaveNewRow();
@@ -205,10 +220,13 @@ export default function EmployeesPage() {
             return (
               <select
                 multiple
-                value={(newRow.roles as unknown as string[]) || []}
+                defaultValue={(newRowRef.current.roles as unknown as string[]) || []}
                 onChange={(event) => {
                   const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
-                  setNewRow((prev) => ({ ...prev, roles: selected as unknown as Array<{ role: string }> }));
+                  newRowRef.current = {
+                    ...newRowRef.current,
+                    roles: selected as unknown as Array<{ role: string }>,
+                  };
                 }}
                 className="w-full rounded border border-gray-300 px-2 py-1 text-sm"
               >
@@ -234,8 +252,10 @@ export default function EmployeesPage() {
           if (isEditing) {
             return (
               <select
-                value={(newRow.status as string) || 'ACTIVE'}
-                onChange={(event) => setNewRow((prev) => ({ ...prev, status: event.target.value }))}
+                defaultValue={String(newRowRef.current.status ?? 'ACTIVE')}
+                onChange={(event) => {
+                  newRowRef.current = { ...newRowRef.current, status: event.target.value };
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') handleSaveNewRow();
                   if (event.key === 'Escape') handleCancelNewRow();
@@ -269,7 +289,7 @@ export default function EmployeesPage() {
         cell: ({ row, getValue }) => {
           if (row.original.id === editingRowId) return <span className="text-gray-400">-</span>;
           const date = getValue() as string;
-          return format(new Date(date), 'dd/MM/yyyy');
+          return format(new Date(date), 'dd/MM/yyyy HH:mm:ss');
         },
         meta: { isCustom: false, label: columnLabels.createdAt || 'Criado em' },
         enableSorting: true,
@@ -277,14 +297,10 @@ export default function EmployeesPage() {
     ],
     [
       columnLabels,
-      createEmployee,
       editingRowId,
       handleCancelNewRow,
       handleSaveNewRow,
-      newCustomFields,
-      newRow,
       roleOptions,
-      saveCustomFields,
     ]
   );
 
@@ -335,25 +351,31 @@ export default function EmployeesPage() {
       header: field.label,
       cell: ({ row, getValue }: CellContext<Employee, unknown>) => {
         if (row.original.id === editingRowId) {
-          const value = newCustomFields[field.key];
+          const value = newCustomFieldsRef.current[field.key];
           if (field.type === 'boolean') {
             return (
               <input
                 type="checkbox"
-                checked={Boolean(value)}
-                onChange={(event) =>
-                  setNewCustomFields((prev) => ({ ...prev, [field.key]: event.target.checked }))
-                }
+                defaultChecked={Boolean(value)}
+                onChange={(event) => {
+                  newCustomFieldsRef.current = {
+                    ...newCustomFieldsRef.current,
+                    [field.key]: event.target.checked,
+                  };
+                }}
               />
             );
           }
           if (field.type === 'category') {
             return (
               <select
-                value={(value as string) || ''}
-                onChange={(event) =>
-                  setNewCustomFields((prev) => ({ ...prev, [field.key]: event.target.value }))
-                }
+                defaultValue={String(value ?? '')}
+                onChange={(event) => {
+                  newCustomFieldsRef.current = {
+                    ...newCustomFieldsRef.current,
+                    [field.key]: event.target.value,
+                  };
+                }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter') handleSaveNewRow();
                   if (event.key === 'Escape') handleCancelNewRow();
@@ -372,10 +394,13 @@ export default function EmployeesPage() {
           return (
             <input
               type={field.type === 'number' || field.type === 'money' ? 'number' : field.type === 'date' ? 'date' : 'text'}
-              value={(value as string) || ''}
-              onChange={(event) =>
-                setNewCustomFields((prev) => ({ ...prev, [field.key]: event.target.value }))
-              }
+              defaultValue={String(value ?? '')}
+              onChange={(event) => {
+                newCustomFieldsRef.current = {
+                  ...newCustomFieldsRef.current,
+                  [field.key]: event.target.value,
+                };
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') handleSaveNewRow();
                 if (event.key === 'Escape') handleCancelNewRow();
@@ -393,7 +418,7 @@ export default function EmployeesPage() {
       },
       enableSorting: true,
     }));
-  }, [customFields, editingRowId, handleCancelNewRow, handleSaveNewRow, newCustomFields]);
+  }, [customFields, editingRowId, handleCancelNewRow, handleSaveNewRow]);
 
   // All columns combined
   const columns = useMemo(
@@ -487,7 +512,13 @@ export default function EmployeesPage() {
   }, [normalizeOrder]);
 
   useEffect(() => {
-    setColumnOrder((prev) => normalizeOrder(prev));
+    setColumnOrder((prev) => {
+      const next = normalizeOrder(prev);
+      if (prev.length === next.length && prev.every((id, index) => id === next[index])) {
+        return prev;
+      }
+      return next;
+    });
   }, [normalizeOrder]);
 
   useEffect(() => {
@@ -507,70 +538,20 @@ export default function EmployeesPage() {
   }, [viewsData, activeViewId, applyConfig]);
 
   useEffect(() => {
-    if (viewsLoading || viewsError) return;
     const views = Array.isArray(viewsData) ? (viewsData as TableView[]) : [];
-    if (views.length > 0 || createView.isPending) return;
-    createView.mutate(
-      {
-        entityType: 'employee',
-        name: 'Default',
-        config: buildConfig(),
-        isDefault: true,
-      },
-      {
-        onSuccess: (response) => {
-          const created =
-            (response as { data?: TableView }).data ||
-            (response as unknown as TableView);
-          if (created?.id) setActiveViewId(created.id);
-        },
-      }
-    );
-  }, [viewsData, viewsLoading, viewsError, buildConfig, createView]);
+    if (viewsLoading || viewsError) return;
+
+    const defaultView = views.find((view) => view.name === 'Default');
+    if (!activeViewId && defaultView?.id) {
+      setActiveViewId(defaultView.id);
+    }
+  }, [viewsData, viewsLoading, viewsError, activeViewId]);
 
   const persistConfig = useCallback(
     (override?: Partial<TableConfig>) => {
+      if (isCreating || editingRowId) return;
       if (!activeViewId || applyingViewRef.current) return;
-      const views = Array.isArray(viewsData) ? (viewsData as TableView[]) : [];
-      const activeView = views.find((view) => view.id === activeViewId);
-      if (activeView?.name === 'Default') {
-        if (skipAutoCreateRef.current) {
-          skipAutoCreateRef.current = false;
-          return;
-        }
-        if (suppressAutoCreateRef.current) return;
-        const existing = views.find((view) => view.name === 'Minha view');
-        if (existing?.id) {
-          setActiveViewId(existing.id);
-          updateView.mutate({
-            id: existing.id,
-            data: { config: { ...buildConfig(), ...override } },
-          });
-          return;
-        }
-        if (!autoCreatedViewRef.current) {
-          autoCreatedViewRef.current = true;
-          createView.mutate(
-            {
-              entityType: 'employee',
-              name: 'Minha view',
-              config: { ...buildConfig(), ...override },
-            },
-            {
-              onSuccess: (response) => {
-                const created =
-                  (response as { data?: TableView }).data ||
-                  (response as unknown as TableView);
-                if (created?.id) setActiveViewId(created.id);
-              },
-              onError: () => {
-                autoCreatedViewRef.current = true;
-              },
-            }
-          );
-        }
-        return;
-      }
+
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = setTimeout(() => {
         updateView.mutate({
@@ -579,27 +560,30 @@ export default function EmployeesPage() {
         });
       }, 500);
     },
-    [activeViewId, viewsData, createView, updateView, buildConfig]
+    [activeViewId, updateView, buildConfig, isCreating, editingRowId]
   );
 
   useEffect(() => {
+    if (isCreating || editingRowId) return;
+
     persistConfig();
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [hiddenColumns, sorting, columnFilters, globalFilter, columnOrder, columnLabels, persistConfig]);
+  }, [hiddenColumns, sorting, columnFilters, globalFilter, columnOrder, columnLabels, persistConfig, isCreating, editingRowId]);
 
   useEffect(() => {
     if (!isCreating || !editingRowId) return;
-    setTimeout(() => {
+
+    const t = setTimeout(() => {
       const rowEl = tableContainerRef.current?.querySelector(
         `[data-row-id="${editingRowId}"]`
       );
       rowEl?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      if (nameInputRef.current) {
-        nameInputRef.current.focus();
-      }
+      nameInputRef.current?.focus();
     }, 0);
+
+    return () => clearTimeout(t);
   }, [isCreating, editingRowId]);
 
   const toggleColumn = (columnId: string) => {
@@ -725,8 +709,8 @@ export default function EmployeesPage() {
   const tableData = useMemo(() => {
     const base = Array.isArray(employees) ? employees : [];
     if (!isCreating || !newRowId) return base;
-    return [...base, { ...newRow, __isNew: true, id: newRowId } as Employee];
-  }, [employees, isCreating, newRow, newRowId]);
+    return [...base, { __isNew: true, id: newRowId } as Employee];
+  }, [employees, isCreating, newRowId]);
 
   return (
     <div className="p-8">
@@ -740,6 +724,8 @@ export default function EmployeesPage() {
               setNewRowId(tempId);
               setEditingRowId(tempId);
               setIsCreating(true);
+              newRowRef.current = { status: 'ACTIVE' };
+              newCustomFieldsRef.current = {};
               setNewRow({ status: 'ACTIVE' });
               setNewCustomFields({});
             }}

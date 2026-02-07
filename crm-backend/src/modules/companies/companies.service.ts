@@ -1,11 +1,11 @@
-import { ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { AuditService } from "../audit/audit.service";
 import { RequestUser } from "../../common/types";
 import { CreateCompanyDto } from "./dto/create-company.dto";
 import { UpdateCompanyDto } from "./dto/update-company.dto";
 import * as bcrypt from "bcrypt";
-import { Company, PaymentMethod, PaymentStatus } from "@prisma/client";
+import { Company, CompanyType, PaymentMethod, PaymentStatus, Prisma } from "@prisma/client";
 
 const CRITICAL_FIELDS = new Set(["plan", "cycle", "paymentMethod", "paymentStatus"]);
 
@@ -53,42 +53,81 @@ export class CompaniesService {
   }
 
   async create(user: RequestUser, dto: CreateCompanyDto, req: any) {
-    const company = await this.prisma.company.create({
-      data: {
-        tenantId: user.tenantId,
-        name: dto.name,
-        cpfCnpj: dto.cpfCnpj.replace(/\D/g, ""),
-        type: dto.type,
-        plan: dto.plan,
-        status: dto.status,
-        currentRevenue: dto.currentRevenue,
-        paymentMethod: dto.paymentMethod,
-        paymentStatus: dto.paymentStatus,
-        cycle: dto.cycle,
-        segment: dto.segment,
-        acquiredAt: dto.acquiredAt ? new Date(dto.acquiredAt) : null,
-        email: dto.email,
-        phone: dto.phone,
-        internalNotes: dto.internalNotes,
-      },
-    });
+    const doc = dto.cpfCnpj.replace(/\D/g, "");
+    const inferredType = doc.length === 11 ? CompanyType.PF : CompanyType.PJ;
+    const type = dto.type ?? inferredType;
 
-    await this.audit.log({
+    const data: any = {
       tenantId: user.tenantId,
-      entityType: "company",
-      entityId: company.id,
-      action: "company.create",
-      field: "*",
-      oldValue: null,
-      newValue: { id: company.id, name: company.name },
-      actor: user,
-      origin: user.roles.includes("MASTER_ADMIN" as any) ? "master_admin" : "employee",
-      requestId: req.headers["x-request-id"],
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-    });
+      name: dto.name,
+      cpfCnpj: doc,
+      type,
 
-    return company;
+      ...(dto.plan ? { plan: dto.plan } : {}),
+      ...(dto.status ? { status: dto.status } : {}),
+      ...(dto.email !== undefined ? { email: dto.email } : {}),
+      ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
+      ...(dto.segment ? { segment: dto.segment } : {}),
+      ...(dto.internalNotes ? { internalNotes: dto.internalNotes } : {}),
+      ...(dto.acquiredAt ? { acquiredAt: new Date(dto.acquiredAt) } : {}),
+      ...(dto.currentRevenue !== undefined ? { currentRevenue: dto.currentRevenue } : {}),
+      ...(dto.paymentMethod ? { paymentMethod: dto.paymentMethod } : {}),
+      ...(dto.paymentStatus ? { paymentStatus: dto.paymentStatus } : {}),
+      ...(dto.cycle ? { cycle: dto.cycle } : {}),
+    };
+
+    try {
+      const company = await this.prisma.company.create({ data });
+
+      await this.audit.log({
+        tenantId: user.tenantId,
+        entityType: "company",
+        entityId: company.id,
+        action: "company.create",
+        field: "*",
+        oldValue: null,
+        newValue: { id: company.id, name: company.name },
+        actor: user,
+        origin: user.roles.includes("MASTER_ADMIN" as any) ? "master_admin" : "employee",
+        requestId: req.headers["x-request-id"],
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+
+      for (const [field, value] of Object.entries(data)) {
+        if (field === "tenantId") continue;
+        await this.audit.log({
+          tenantId: user.tenantId,
+          entityType: "company",
+          entityId: company.id,
+          action: "company.create",
+          field,
+          oldValue: null,
+          newValue: value ?? null,
+          actor: user,
+          origin: user.roles.includes("MASTER_ADMIN" as any) ? "master_admin" : "employee",
+          requestId: req.headers["x-request-id"],
+          ip: req.ip,
+          userAgent: req.headers["user-agent"],
+        });
+      }
+
+      return company;
+    } catch (error: any) {
+      console.error("Company create failed", {
+        dto,
+        message: error?.message,
+        code: error?.code,
+        meta: error?.meta,
+      });
+      // Unique constraint (ex: cpfCnpj unique)
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+        const target = (error.meta as any)?.target;
+        const targetLabel = Array.isArray(target) ? target.join(", ") : (target ?? "field");
+        throw new BadRequestException(`Unique constraint failed on ${targetLabel}`);
+      }
+      throw new BadRequestException(error?.message || "Database error creating company");
+    }
   }
 
   async detail(user: RequestUser, id: string) {

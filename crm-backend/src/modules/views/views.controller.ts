@@ -44,6 +44,13 @@ export class ViewsController {
     @Request() req: any,
     @Query('entityType') entityType?: string,
   ) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('ViewsController.listViews', {
+        tenantId: req.user?.tenantId,
+        userId: req.user?.id,
+        entityType,
+      });
+    }
     if (!entityType) {
       throw new BadRequestException('entityType query parameter is required');
     }
@@ -61,6 +68,13 @@ export class ViewsController {
     @Request() req: any,
     @Body() dto: CreateTableViewDto,
   ) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('ViewsController.createView', {
+        tenantId: req.user?.tenantId,
+        userId: req.user?.id,
+        dto,
+      });
+    }
     dto.entityType = normalizeEntityType(dto.entityType);
     return this.viewsService.createTableView(req.user.tenantId, req.user.id, dto);
   }
@@ -76,6 +90,14 @@ export class ViewsController {
     @Param('id') viewId: string,
     @Body() dto: UpdateTableViewDto,
   ) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('ViewsController.updateView', {
+        tenantId: req.user?.tenantId,
+        userId: req.user?.id,
+        viewId,
+        dto,
+      });
+    }
     if (dto.entityType) {
       dto.entityType = normalizeEntityType(dto.entityType);
     }

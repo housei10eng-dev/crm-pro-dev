@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useCallback, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -27,6 +27,7 @@ import {
   OnChangeFn,
   VisibilityState,
   ColumnOrderState,
+  ColumnSizingState,
 } from '@tanstack/react-table';
 import {
   ChevronUp,
@@ -43,6 +44,7 @@ interface AdvancedTableProps<T> {
   columns: ColumnDef<T>[];
   hiddenColumns?: string[];
   columnOrder?: string[];
+  columnSizing?: ColumnSizingState;
   sorting: SortingState;
   onSortingChange: OnChangeFn<SortingState>;
   columnFilters: ColumnFiltersState;
@@ -50,6 +52,7 @@ interface AdvancedTableProps<T> {
   globalFilter: string;
   onGlobalFilterChange: (filter: string) => void;
   onColumnOrderChange?: (columnIds: string[]) => void;
+  onColumnSizingChange?: OnChangeFn<ColumnSizingState>;
   onToggleColumn?: (columnId: string) => void;
   onRenameColumn?: (columnId: string, newLabel: string, meta?: ColumnMeta) => void;
   onDeleteColumn?: (columnId: string, meta?: ColumnMeta) => void;
@@ -66,6 +69,12 @@ interface AdvancedTableProps<T> {
   onStartCreateRow?: () => void;
   onCancelEdit?: () => void;
   onSaveEdit?: () => void;
+  editingCell?: { rowId: string; columnId: string } | null;
+  editingValue?: string;
+  onStartEditCell?: (row: T, columnId: string, value: unknown, meta?: ColumnMeta) => void;
+  onEditValueChange?: (value: string) => void;
+  onCommitEdit?: (row: T, columnId: string, value: string, meta?: ColumnMeta) => void;
+  onCancelCellEdit?: () => void;
 }
 
 export interface ColumnMeta {
@@ -73,6 +82,9 @@ export interface ColumnMeta {
   customFieldId?: string;
   label?: string;
   disableMenu?: boolean;
+  editable?: boolean;
+  editor?: 'text' | 'email' | 'phone' | 'cpfCnpj' | 'select';
+  options?: string[];
 }
 
 interface DraggableHeaderProps {
@@ -86,6 +98,11 @@ interface DraggableHeaderProps {
   onToggleColumn?: (columnId: string) => void;
   onRenameColumn?: (columnId: string, newLabel: string, meta?: ColumnMeta) => void;
   onDeleteColumn?: (columnId: string, meta?: ColumnMeta) => void;
+  canResize?: boolean;
+  onResize?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onAutoSize?: () => void;
+  isResizing?: boolean;
+  size?: number;
 }
 
 function DraggableHeader({
@@ -99,6 +116,11 @@ function DraggableHeader({
   onToggleColumn,
   onRenameColumn,
   onDeleteColumn,
+  canResize,
+  onResize,
+  onAutoSize,
+  isResizing,
+  size,
 }: DraggableHeaderProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({
     id,
@@ -106,16 +128,17 @@ function DraggableHeader({
 
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const style = {
+  const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     opacity: isDragging ? 0.5 : 1,
+    ...(size ? { width: size } : {}),
   };
 
   return (
     <th
       ref={setNodeRef}
       style={style}
-      className={`group px-4 py-3 text-left text-sm font-semibold text-gray-700 ${
+      className={`group relative px-4 py-3 text-left text-sm font-semibold text-gray-700 ${
         isDragging ? 'bg-blue-50' : ''
       }`}
     >
@@ -210,6 +233,19 @@ function DraggableHeader({
           )}
         </div>
       )}
+      {canResize && (
+        <div
+          onMouseDown={onResize}
+          onClick={(event) => event.stopPropagation()}
+          onDoubleClick={(event) => {
+            event.stopPropagation();
+            onAutoSize?.();
+          }}
+          className={`absolute right-0 top-0 h-full w-1 cursor-col-resize select-none ${
+            isResizing ? 'bg-blue-400' : 'bg-transparent'
+          }`}
+        />
+      )}
     </th>
   );
 }
@@ -219,6 +255,7 @@ export function AdvancedTable<T>({
   columns,
   hiddenColumns,
   columnOrder,
+  columnSizing,
   sorting,
   onSortingChange,
   columnFilters,
@@ -226,6 +263,7 @@ export function AdvancedTable<T>({
   globalFilter,
   onGlobalFilterChange,
   onColumnOrderChange,
+  onColumnSizingChange,
   onToggleColumn,
   onRenameColumn,
   onDeleteColumn,
@@ -238,8 +276,15 @@ export function AdvancedTable<T>({
   loading,
   toolbar,
   editingRowId,
+  editingCell,
+  editingValue,
+  onStartEditCell,
+  onEditValueChange,
+  onCommitEdit,
+  onCancelCellEdit,
 }: AdvancedTableProps<T>) {
   const showAddColumn = Boolean(onAddColumn);
+  const measureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const columnVisibility = useMemo<VisibilityState | undefined>(() => {
     if (!hiddenColumns || hiddenColumns.length === 0) return undefined;
     return hiddenColumns.reduce<VisibilityState>((acc, columnId) => {
@@ -256,16 +301,24 @@ export function AdvancedTable<T>({
   const table = useReactTable({
     data,
     columns,
+    getRowId: (originalRow, index) => {
+      const id = (originalRow as { id?: string | number })?.id;
+      return id ? String(id) : String(index);
+    },
     state: {
       sorting,
       columnFilters,
       globalFilter,
+      ...(columnSizing ? { columnSizing } : {}),
       ...(columnVisibility ? { columnVisibility } : {}),
       ...(resolvedColumnOrder ? { columnOrder: resolvedColumnOrder } : {}),
     },
     onSortingChange,
     onColumnFiltersChange,
     onGlobalFilterChange,
+    onColumnSizingChange,
+    columnResizeMode: 'onEnd',
+    enableColumnResizing: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -283,6 +336,39 @@ export function AdvancedTable<T>({
   const headerGroups = table.getHeaderGroups();
   const visibleLeafColumns = table.getVisibleLeafColumns();
   const headerIds = visibleLeafColumns.map((col) => col.id);
+
+  const measureTextWidth = useCallback((text: string) => {
+    if (typeof document === 'undefined') return text.length * 8;
+    if (!measureCanvasRef.current) {
+      measureCanvasRef.current = document.createElement('canvas');
+    }
+    const context = measureCanvasRef.current.getContext('2d');
+    if (!context) return text.length * 8;
+    context.font = '14px ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif';
+    return context.measureText(text).width;
+  }, []);
+
+  const handleAutoSizeColumn = useCallback(
+    (columnId: string) => {
+      if (!onColumnSizingChange) return;
+      const header = table.getHeaderGroups()[0]?.headers.find(
+        (item) => item.column.id === columnId
+      );
+      const headerLabel =
+        typeof header?.column.columnDef.header === 'string'
+          ? header.column.columnDef.header
+          : header?.column.id || columnId;
+      let maxWidth = measureTextWidth(String(headerLabel));
+      table.getRowModel().rows.forEach((row) => {
+        const value = row.getValue(columnId);
+        const text = value === null || value === undefined ? '' : String(value);
+        maxWidth = Math.max(maxWidth, measureTextWidth(text));
+      });
+      const nextSize = Math.min(600, Math.max(80, Math.ceil(maxWidth + 40)));
+      onColumnSizingChange((prev) => ({ ...prev, [columnId]: nextSize }));
+    },
+    [measureTextWidth, onColumnSizingChange, table]
+  );
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -350,6 +436,11 @@ export function AdvancedTable<T>({
                           onToggleColumn={onToggleColumn}
                           onRenameColumn={onRenameColumn}
                           onDeleteColumn={onDeleteColumn}
+                          canResize={header.column.getCanResize()}
+                          onResize={header.getResizeHandler()}
+                          onAutoSize={() => handleAutoSizeColumn(header.column.id)}
+                          isResizing={header.column.getIsResizing()}
+                          size={header.getSize()}
                         >
                           {flexRender(
                             header.column.columnDef.header,
@@ -402,7 +493,7 @@ export function AdvancedTable<T>({
                 table.getRowModel().rows.map((row) => (
                   <tr
                     key={row.id}
-                    onClick={() => onRowClick?.(row.original)}
+                    onClick={onRowClick ? () => onRowClick(row.original) : undefined}
                     data-row-id={(row.original as { id?: string }).id}
                     data-editing={
                       editingRowId &&
@@ -412,11 +503,115 @@ export function AdvancedTable<T>({
                     }
                     className={onRowClick ? 'cursor-pointer hover:bg-gray-50' : ''}
                   >
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3 text-sm text-gray-900">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
+                    {row.getVisibleCells().map((cell) => {
+                      const meta = cell.column.columnDef.meta as ColumnMeta | undefined;
+                      const rowId = String((row.original as { id?: string }).id || row.id);
+                      const isNewRow = Boolean(
+                        (row.original as { __isNew?: boolean }).__isNew
+                      );
+                      const isEditingCell =
+                        editingCell?.rowId === rowId && editingCell?.columnId === cell.column.id;
+                      const editable = Boolean(meta?.editable && onStartEditCell);
+                      if (isEditingCell && editable && onEditValueChange && onCommitEdit) {
+                        if (meta?.editor === 'select') {
+                          return (
+                            <td
+                              key={cell.id}
+                              className="px-4 py-3 text-sm text-gray-900"
+                              style={{ width: cell.column.getSize() }}
+                            >
+                              <select
+                                autoFocus
+                                value={editingValue || ''}
+                                onChange={(event) => {
+                                  onEditValueChange(event.target.value);
+                                  onCommitEdit(
+                                    row.original,
+                                    cell.column.id,
+                                    event.target.value,
+                                    meta
+                                  );
+                                }}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Escape') {
+                                    onCancelCellEdit?.();
+                                  }
+                                }}
+                                className="w-full rounded border border-blue-400 px-2 py-1 text-sm"
+                              >
+                                {(meta.options || []).map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          );
+                        }
+                        const inputType =
+                          meta?.editor === 'email'
+                            ? 'email'
+                            : meta?.editor === 'phone'
+                              ? 'tel'
+                              : 'text';
+                        return (
+                          <td
+                            key={cell.id}
+                            className="px-4 py-3 text-sm text-gray-900"
+                            style={{ width: cell.column.getSize() }}
+                          >
+                            <input
+                              autoFocus
+                              value={editingValue || ''}
+                              type={inputType}
+                              onChange={(event) => onEditValueChange(event.target.value)}
+                              onBlur={() => {
+                                onCommitEdit(
+                                  row.original,
+                                  cell.column.id,
+                                  editingValue || '',
+                                  meta
+                                );
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter') {
+                                  onCommitEdit(
+                                    row.original,
+                                    cell.column.id,
+                                    editingValue || '',
+                                    meta
+                                  );
+                                }
+                                if (event.key === 'Escape') {
+                                  onCancelCellEdit?.();
+                                }
+                              }}
+                              className="w-full rounded border border-blue-400 px-2 py-1 text-sm"
+                            />
+                          </td>
+                        );
+                      }
+                      return (
+                        <td
+                          key={cell.id}
+                          className={`px-4 py-3 text-sm text-gray-900 ${
+                            editable ? 'cursor-text' : ''
+                          } ${isNewRow ? 'pointer-events-auto' : ''}`}
+                          style={{ width: cell.column.getSize() }}
+                          onDoubleClick={() => {
+                            if (!editable || isNewRow) return;
+                            onStartEditCell?.(
+                              row.original,
+                              cell.column.id,
+                              cell.getValue(),
+                              meta
+                            );
+                          }}
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </td>
+                      );
+                    })}
                     {showAddColumn && <td className="px-2 py-3" />}
                   </tr>
                 ))

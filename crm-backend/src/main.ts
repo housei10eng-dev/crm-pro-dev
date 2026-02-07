@@ -15,8 +15,17 @@ async function bootstrap() {
     .split(",")
     .map((o) => o.trim())
     .filter(Boolean);
-  const isProd = process.env.NODE_ENV === "production";
-  const corsOrigin = corsOrigins.length > 0 ? corsOrigins : (isProd ? false : true);
+  const corsOrigin = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    if (corsOrigins.length === 0) {
+      callback(null, true);
+      return;
+    }
+    callback(null, corsOrigins.includes(origin));
+  };
 
   app.enableCors({
     origin: corsOrigin,
@@ -30,6 +39,25 @@ async function bootstrap() {
       "X-Webhook-Timestamp",
       "X-Correlation-ID",
     ],
+  });
+  app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const origin = req.headers.origin;
+    const allowAll = corsOrigins.length === 0;
+    const allowOrigin = allowAll ? (origin || "*") : (origin && corsOrigins.includes(origin) ? origin : "");
+    if (allowOrigin) {
+      res.setHeader("Access-Control-Allow-Origin", allowOrigin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type,Authorization,X-Tenant-ID,X-Event-ID,X-Webhook-Signature,X-Webhook-Timestamp,X-Correlation-ID",
+      );
+    }
+    if (req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
+    next();
   });
   app.use(
     express.json({

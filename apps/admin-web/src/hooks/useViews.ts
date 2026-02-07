@@ -13,6 +13,16 @@ export function useViews(
       }
       return data;
     },
+    refetchOnWindowFocus: false,
+    staleTime: 30000,
+    retry: (failureCount, error) => {
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 401 || status === 403) return false;
+      return failureCount < 1;
+    },
+    onError: (error) => {
+      console.error('useViews error', (error as any)?.response?.data || error);
+    },
   });
 }
 
@@ -22,6 +32,9 @@ export function useCreateView() {
     mutationFn: viewsApi.create,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['views'] });
+    },
+    onError: (error) => {
+      console.error('createView error', (error as any)?.response?.data || error);
     },
   });
 }

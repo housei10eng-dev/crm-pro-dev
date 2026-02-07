@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { CompanyStatus } from "@prisma/client";
+import { CompanyStatus, CompanyPlan } from "@prisma/client";
 import { IsOptional, IsString, IsEmail, IsEnum, MaxLength } from "class-validator";
 
 export class UpdateCompanyDto {
@@ -11,7 +11,7 @@ export class UpdateCompanyDto {
   @ApiPropertyOptional({ enum: CompanyStatus }) @IsOptional() @IsEnum(CompanyStatus) status?: CompanyStatus;
 
   // Critical (blocked unless unlocked)
-  @ApiPropertyOptional() @IsOptional() @IsString() plan?: string;
+  @ApiPropertyOptional({ enum: CompanyPlan }) @IsOptional() @IsEnum(CompanyPlan) plan?: CompanyPlan;
   @ApiPropertyOptional() @IsOptional() @IsString() cycle?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() paymentMethod?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() paymentStatus?: string;

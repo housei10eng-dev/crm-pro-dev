@@ -105,7 +105,7 @@ async function main() {
         name: `Empresa ${i}`,
         cpfCnpj: i % 2 === 0 ? `1234567800010${i}` : `1234567890${i}`.slice(0,11),
         type: i % 2 === 0 ? CompanyType.PJ : CompanyType.PF,
-        plan: i % 3 === 0 ? "PRO" : "STARTER",
+        plan: i % 3 === 0 ? "PRO" : "FREE",
         status: statuses[i % statuses.length],
         currentRevenue: (i * 10000),
         paymentMethod: [PaymentMethod.CARD, PaymentMethod.PIX, PaymentMethod.BOLETO][i % 3],

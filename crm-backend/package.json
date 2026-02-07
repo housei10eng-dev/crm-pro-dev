@@ -24,7 +24,7 @@
     "@nestjs/platform-express": "^10.4.0",
     "@nestjs/swagger": "^7.4.0",
     "@nestjs/throttler": "^5.2.0",
-    "@prisma/client": "^5.19.0",
+    "@prisma/client": "^5.22.0",
     "bcrypt": "^5.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -61,7 +61,8 @@
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.5.4"
   },
+  
   "prisma": {
-    "seed": "ts-node prisma/seed.ts"
+  "seed": "ts-node prisma/seed.ts"
   }
 }

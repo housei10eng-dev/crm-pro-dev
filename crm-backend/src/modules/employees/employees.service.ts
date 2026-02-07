@@ -5,6 +5,7 @@ import { CreateEmployeeDto } from "./dto/create-employee.dto";
 import { UpdateEmployeeDto } from "./dto/update-employee.dto";
 import * as bcrypt from "bcrypt";
 import { AuditService } from "../audit/audit.service";
+import { RoleName } from "@prisma/client";
 
 @Injectable()
 export class EmployeesService {
@@ -23,14 +24,21 @@ export class EmployeesService {
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException("Email already exists");
 
+    const roles = dto.roles && dto.roles.length > 0 ? dto.roles : [RoleName.TENANT_USER];
+    const rawPassword = dto.password?.trim()
+      ? dto.password
+      : `Temp${Math.random().toString(36).slice(2, 10)}!`;
+    const origin = user.roles.includes("MASTER_ADMIN" as any) ? "master_admin" : "employee";
+
     const created = await this.prisma.user.create({
       data: {
         tenantId: user.tenantId,
         name: dto.name,
         email: dto.email,
-        passwordHash: await bcrypt.hash(dto.password, 10),
+        status: dto.status ?? "ACTIVE",
+        passwordHash: await bcrypt.hash(rawPassword, 10),
         roles: {
-          create: dto.roles.map((r) => ({ tenantId: user.tenantId, role: r })),
+          create: roles.map((r) => ({ tenantId: user.tenantId, role: r })),
         },
       },
       include: { roles: true },
@@ -45,13 +53,43 @@ export class EmployeesService {
       oldValue: null,
       newValue: { id: created.id, email: created.email, roles: created.roles.map((r) => r.role) },
       actor: user,
-      origin: "master_admin",
+      origin,
       requestId: req.headers["x-request-id"],
       ip: req.ip,
       userAgent: req.headers["user-agent"],
     });
 
-    return { id: created.id, email: created.email, name: created.name, roles: created.roles.map((r) => r.role) };
+    const createdFields: Record<string, unknown> = {
+      name: created.name,
+      email: created.email,
+      status: created.status,
+      roles: created.roles.map((r) => r.role),
+    };
+
+    for (const [field, value] of Object.entries(createdFields)) {
+      await this.audit.log({
+        tenantId: user.tenantId,
+        entityType: "user",
+        entityId: created.id,
+        action: "employee.create",
+        field,
+        oldValue: null,
+        newValue: value ?? null,
+        actor: user,
+        origin,
+        requestId: req.headers["x-request-id"],
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+    }
+
+    return {
+      id: created.id,
+      email: created.email,
+      name: created.name,
+      status: created.status,
+      roles: created.roles.map((r) => r.role),
+    };
   }
 
   async update(user: RequestUser, employeeId: string, dto: UpdateEmployeeDto, req: any) {
@@ -73,8 +111,8 @@ export class EmployeesService {
     };
 
     const updateData: any = {};
-    if (dto.name) updateData.name = dto.name;
-    if (dto.status) updateData.status = dto.status;
+    if (dto.name !== undefined) updateData.name = dto.name;
+    if (dto.status !== undefined) updateData.status = dto.status;
 
     const updated = await this.prisma.user.update({
       where: { id: employeeId },
@@ -104,20 +142,32 @@ export class EmployeesService {
       roles: dto.roles || employee.roles.map((r) => r.role),
     };
 
-    await this.audit.log({
-      tenantId: user.tenantId,
-      entityType: "user",
-      entityId: employeeId,
-      action: "employee.update",
-      field: "*",
-      oldValue,
-      newValue,
-      actor: user,
-      origin: "master_admin",
-      requestId: req.headers["x-request-id"],
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-    });
+    const origin = user.roles.includes("MASTER_ADMIN" as any) ? "master_admin" : "employee";
+    const updatedFields: Record<string, { oldValue: unknown; newValue: unknown }> = {
+      name: { oldValue: oldValue.name, newValue: newValue.name },
+      status: { oldValue: oldValue.status, newValue: newValue.status },
+    };
+    if (dto.roles) {
+      updatedFields.roles = { oldValue: oldValue.roles, newValue: newValue.roles };
+    }
+
+    for (const [field, values] of Object.entries(updatedFields)) {
+      if ((dto as any)[field] === undefined) continue;
+      await this.audit.log({
+        tenantId: user.tenantId,
+        entityType: "user",
+        entityId: employeeId,
+        action: "employee.update",
+        field,
+        oldValue: values.oldValue ?? null,
+        newValue: values.newValue ?? null,
+        actor: user,
+        origin,
+        requestId: req.headers["x-request-id"],
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+    }
 
     return {
       id: updated.id,

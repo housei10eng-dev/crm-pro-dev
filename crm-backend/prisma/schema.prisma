@@ -35,6 +35,12 @@ enum PaymentMethod {
   OTHER
 }
 
+enum CompanyPlan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
 enum PaymentStatus {
   PAID
   OPEN
@@ -105,7 +111,7 @@ model Company {
   name            String
   cpfCnpj         String
   type            CompanyType
-  plan            String
+  plan            CompanyPlan @default(FREE)
   status          CompanyStatus @default(ACTIVE)
   currentRevenue  Int           @default(0) // cents
   paymentMethod   PaymentMethod @default(CARD)

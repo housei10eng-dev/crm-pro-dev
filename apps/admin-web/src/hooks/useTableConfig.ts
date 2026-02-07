@@ -5,6 +5,7 @@ export interface TableConfig {
   columnsOrder: string[];
   hiddenColumns: string[];
   columnLabels?: Record<string, string>;
+  columnSizing?: Record<string, number>;
   filters: ColumnFiltersState;
   sorting: SortingState;
   globalSearch?: string;

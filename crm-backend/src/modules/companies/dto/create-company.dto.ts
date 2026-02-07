@@ -1,25 +1,88 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { CompanyType, CompanyStatus, PaymentMethod, PaymentStatus } from "@prisma/client";
-import { IsEnum, IsInt, IsOptional, IsString, MinLength, IsEmail, MaxLength } from "class-validator";
+import {
+  CompanyPlan,
+  CompanyStatus,
+  CompanyType,
+  PaymentMethod,
+  PaymentStatus,
+} from "@prisma/client";
+import {
+  IsEmail,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from "class-validator";
 
 export class CreateCompanyDto {
-  @ApiProperty() @IsString() @MinLength(2) name!: string;
-  @ApiProperty() @IsString() cpfCnpj!: string;
-  @ApiProperty({ enum: CompanyType }) @IsEnum(CompanyType) type!: CompanyType;
+  @ApiProperty()
+  @IsString()
+  @MinLength(2)
+  name!: string;
 
-  @ApiProperty() @IsString() plan!: string;
-  @ApiProperty({ enum: CompanyStatus }) @IsEnum(CompanyStatus) status!: CompanyStatus;
+  @ApiProperty()
+  @IsString()
+  cpfCnpj!: string;
 
-  @ApiProperty() @IsInt() currentRevenue!: number; // cents
-  @ApiProperty({ enum: PaymentMethod }) @IsEnum(PaymentMethod) paymentMethod!: PaymentMethod;
-  @ApiProperty({ enum: PaymentStatus }) @IsEnum(PaymentStatus) paymentStatus!: PaymentStatus;
+  @ApiPropertyOptional({ enum: CompanyType })
+  @IsOptional()
+  @IsEnum(CompanyType)
+  type?: CompanyType;
 
-  @ApiProperty() @IsString() cycle!: string;
+  @ApiPropertyOptional({ enum: CompanyPlan })
+  @IsOptional()
+  @IsEnum(CompanyPlan)
+  plan?: CompanyPlan;
 
-  @ApiPropertyOptional() @IsOptional() @IsString() segment?: string;
-  @ApiPropertyOptional() @IsOptional() acquiredAt?: string;
+  @ApiPropertyOptional({ enum: CompanyStatus })
+  @IsOptional()
+  @IsEnum(CompanyStatus)
+  status?: CompanyStatus;
 
-  @ApiPropertyOptional() @IsOptional() @IsEmail() email?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(30) phone?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() internalNotes?: string;
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsInt()
+  currentRevenue?: number;
+
+  @ApiPropertyOptional({ enum: PaymentMethod })
+  @IsOptional()
+  @IsEnum(PaymentMethod)
+  paymentMethod?: PaymentMethod;
+
+  @ApiPropertyOptional({ enum: PaymentStatus })
+  @IsOptional()
+  @IsEnum(PaymentStatus)
+  paymentStatus?: PaymentStatus;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  cycle?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  segment?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  acquiredAt?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  internalNotes?: string;
 }
